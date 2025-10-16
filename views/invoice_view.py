@@ -16,7 +16,7 @@ class InvoiceView:
             widget.destroy()
 
         self.root.title("Shop Shoes - Hóa đơn chi tiết")
-        self.root.geometry("1000x800")
+        self.root.geometry("1200x800")
 
         # Get customer info from database
         customer_address = "Chưa cập nhật địa chỉ"
@@ -130,23 +130,25 @@ class InvoiceView:
         tk.Label(products_frame, text="Chi tiết sản phẩm:", font=('Arial', 16, 'bold'),
                  bg='white', fg='#2c3e50').pack(anchor='w', pady=(0, 10))
 
-        # Create table for products with better alignment
+        # Create table for products with better alignment including size and color
         table_frame = tk.Frame(products_frame, bg='white')
         table_frame.pack(fill='both', expand=True)
 
-        # Table header with consistent layout
+        # Table header with size and color columns
         header_table = tk.Frame(table_frame, bg='#34495e', height=45)
         header_table.pack(fill='x', pady=(0, 2))
         header_table.pack_propagate(False)
 
-        # Define header columns with consistent widths
+        # Define header columns with size and color included
         header_cols = [
-            ("STT", 0.08, 'center'),
-            ("Mã SP", 0.12, 'center'),
-            ("Tên sản phẩm", 0.35, 'w'),
-            ("Số lượng", 0.12, 'center'),
-            ("Đơn giá", 0.165, 'e'),
-            ("Thành tiền", 0.165, 'e')
+            ("STT", 0.06, 'center'),
+            ("Mã SP", 0.10, 'center'),
+            ("Tên sản phẩm", 0.28, 'w'),
+            ("Màu sắc", 0.10, 'center'),
+            ("Size", 0.08, 'center'),
+            ("Số lượng", 0.10, 'center'),
+            ("Đơn giá", 0.14, 'e'),
+            ("Thành tiền", 0.14, 'e')
         ]
 
         for i, (text, width_ratio, anchor) in enumerate(header_cols):
@@ -155,22 +157,77 @@ class InvoiceView:
             header_label.place(relx=sum(col[1] for col in header_cols[:i]), rely=0,
                               relwidth=width_ratio, relheight=1)
 
-        # Product rows with consistent alignment
+        # Group cart products by name, size, and color
+        grouped_products = {}
+
+        # Get detailed cart data from database including size and color
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Get customer's cart
+            cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
+            kh_result = cursor.fetchone()
+            if kh_result:
+                ma_kh = kh_result[0]
+                cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+                gh_result = cursor.fetchone()
+                if gh_result:
+                    ma_gh = gh_result[0]
+
+                    # Get cart items with product details
+                    cursor.execute("""
+                        SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.SoLuong, ghsp.MauSac, ghsp.Size
+                        FROM giohangchuasanpham ghsp
+                        JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
+                        WHERE ghsp.MaGH = %s
+                    """, (ma_gh,))
+
+                    cart_items = cursor.fetchall()
+
+                    # Group items by product code, name, size, and color
+                    for ma_sp, ten_sp, gia, so_luong, mau_sac, size in cart_items:
+                        key = f"{ma_sp}_{ten_sp}_{mau_sac}_{size}"
+                        if key in grouped_products:
+                            grouped_products[key]['quantity'] += so_luong
+                            grouped_products[key]['total'] = grouped_products[key]['quantity'] * gia
+                        else:
+                            grouped_products[key] = {
+                                'ma_sp': ma_sp,
+                                'name': ten_sp,
+                                'price': gia,
+                                'quantity': so_luong,
+                                'color': mau_sac,
+                                'size': size,
+                                'total': gia * so_luong
+                            }
+
+        except Exception as e:
+            print(f"Error grouping products: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+        # Product rows with size and color
         stt = 1
-        for ma_sp, product in cart_products.items():
+        for key, product in grouped_products.items():
             # Product row frame with consistent height
             row_frame = tk.Frame(table_frame, bg='white', relief='solid', bd=1, height=50)
             row_frame.pack(fill='x', pady=1)
             row_frame.pack_propagate(False)
 
-            # Create row data with same width ratios as headers
+            # Create row data with same width ratios as headers including size and color
             row_data = [
-                (str(stt), 0.08, 'center', 'text'),
-                (ma_sp, 0.12, 'center', 'text'),
-                (product['name'], 0.35, 'w', 'name'),
-                (str(product['quantity']), 0.12, 'center', 'text'),
-                (f"{product['price']:,.0f}", 0.165, 'e', 'text'),
-                (f"{product['total']:,.0f}", 0.165, 'e', 'price')
+                (str(stt), 0.06, 'center', 'text'),
+                (product['ma_sp'], 0.10, 'center', 'text'),
+                (product['name'], 0.28, 'w', 'name'),
+                (product['color'], 0.10, 'center', 'text'),
+                (str(product['size']), 0.08, 'center', 'text'),
+                (str(product['quantity']), 0.10, 'center', 'text'),
+                (f"{product['price']:,.0f}", 0.14, 'e', 'text'),
+                (f"{product['total']:,.0f}", 0.14, 'e', 'price')
             ]
 
             for i, (content, width_ratio, anchor, content_type) in enumerate(row_data):
@@ -184,7 +241,7 @@ class InvoiceView:
                 elif content_type == 'name':
                     # Product name with text wrapping
                     name_label = tk.Label(row_frame, text=content, font=('Arial', 11),
-                                         bg='white', anchor=anchor, wraplength=int(width_ratio * 700))
+                                         bg='white', anchor=anchor, wraplength=int(width_ratio * 1000))
                     name_label.place(relx=x_pos, rely=0, relwidth=width_ratio, relheight=1)
                 else:
                     # Regular text labels
@@ -268,22 +325,52 @@ class InvoiceView:
                 (ma_hd, ma_kh, current_date)
             )
 
-            # Thêm chi tiết hóa đơn
-            for ma_sp, product in cart_products.items():
-                cursor.execute(
-                    """
-                    INSERT INTO cthoadon (MaHD, MaSP, TenSP, MauSac, Size, SoLuongMua, DonGia, ThanhTien)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (ma_hd, ma_sp, product['name'], 'Mặc định', 'Mặc định',
-                     product['quantity'], product['price'], product['total'])
-                )
-
-            # Clear cart from database after payment
+            # Get cart items with size and color from database
             cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
             gh_result = cursor.fetchone()
             if gh_result:
                 ma_gh = gh_result[0]
+
+                # Get detailed cart items
+                cursor.execute("""
+                    SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.SoLuong, ghsp.MauSac, ghsp.Size
+                    FROM giohangchuasanpham ghsp
+                    JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
+                    WHERE ghsp.MaGH = %s
+                """, (ma_gh,))
+
+                cart_items = cursor.fetchall()
+
+                # Group items and insert into cthoadon
+                grouped_items = {}
+                for ma_sp, ten_sp, gia, so_luong, mau_sac, size in cart_items:
+                    key = f"{ma_sp}_{mau_sac}_{size}"
+                    if key in grouped_items:
+                        grouped_items[key]['quantity'] += so_luong
+                        grouped_items[key]['total'] = grouped_items[key]['quantity'] * gia
+                    else:
+                        grouped_items[key] = {
+                            'ma_sp': ma_sp,
+                            'ten_sp': ten_sp,
+                            'price': gia,
+                            'quantity': so_luong,
+                            'color': mau_sac,
+                            'size': size,
+                            'total': gia * so_luong
+                        }
+
+                # Insert grouped items into cthoadon
+                for item in grouped_items.values():
+                    cursor.execute(
+                        """
+                        INSERT INTO cthoadon (MaHD, MaSP, TenSP, MauSac, Size, SoLuongMua, DonGia, ThanhTien)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (ma_hd, item['ma_sp'], item['ten_sp'], item['color'], item['size'],
+                         item['quantity'], item['price'], item['total'])
+                    )
+
+                # Clear cart from database after payment
                 cursor.execute("DELETE FROM giohangchuasanpham WHERE MaGH = %s", (ma_gh,))
 
             conn.commit()

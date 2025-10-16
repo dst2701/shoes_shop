@@ -14,6 +14,7 @@ class ProductView:
     def __init__(self, root):
         self.root = root
         self.cart = {}  # Memory cart for UI sync
+        self.brand_combo = None  # Store reference to brand combo for refreshing
 
     def load_cart_from_database(self, username):
         """Load cart data from database - from main.py"""
@@ -57,6 +58,25 @@ class ProductView:
 
         except Exception as e:
             print(f"Error loading cart from database: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    def refresh_brand_filter(self):
+        """Refresh the brand filter dropdown with updated data - moved to class level"""
+        if not self.brand_combo:
+            return
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT TenTH FROM thuonghieu ORDER BY TenTH")
+            brands = ["Tất cả"] + [row[0] for row in cursor.fetchall()]
+            self.brand_combo['values'] = brands
+            print(f"Debug: Brand filter updated with {len(brands)-1} brands")
+        except Exception as e:
+            print(f"Error refreshing brand filter: {e}")
         finally:
             if cursor:
                 cursor.close()
@@ -135,11 +155,8 @@ class ProductView:
                                 font=('Arial', 12, 'bold'), padx=15, pady=5)
             btn_cart.pack(side='right', pady=15, padx=(0, 10))
         else:
-            # Product management button for employees
-            btn_add_product = tk.Button(header_container, text="➕ Thêm sản phẩm", command=lambda: self.show_add_product_form(role, username),
-                                       bg='#27ae60', fg='white', relief='flat',
-                                       font=('Arial', 12, 'bold'), padx=15, pady=5)
-            btn_add_product.pack(side='right', pady=15, padx=(0, 10))
+            # No product management button in header for sellers anymore
+            pass
 
         btn_logout = tk.Button(header_container, text="Đăng xuất",
                               command=lambda: self.logout_callback() if hasattr(self, 'logout_callback') else None,
@@ -181,8 +198,12 @@ class ProductView:
                  bg='#ecf0f1').pack(side='left', padx=(10, 5))
 
         brand_var = tk.StringVar(value="Tất cả")
-        brand_combo = ttk.Combobox(filter_container, textvariable=brand_var, width=12, state='readonly')
+        brand_combo = ttk.Combobox(filter_container, textvariable=brand_var, width=12, state='readonly',
+                                  font=('Arial', 11))
         brand_combo.pack(side='left', padx=5)
+
+        # Store reference to brand combo for refreshing
+        self.brand_combo = brand_combo
 
         # Price filter
         tk.Label(filter_container, text="Giá:", font=('Arial', 12, 'bold'),
@@ -190,7 +211,7 @@ class ProductView:
 
         price_var = tk.StringVar(value="Tất cả")
         price_combo = ttk.Combobox(filter_container, textvariable=price_var, width=12, state='readonly',
-                                  values=["Tất cả", "Dưới 500k", "500k - 1tr", "1tr - 2tr", "Trên 2tr"])
+                                  font=('Arial', 11), values=["Tất cả", "Dưới 500k", "500k - 1tr", "1tr - 2tr", "Trên 2tr"])
         price_combo.pack(side='left', padx=5)
 
         btn_filter = tk.Button(filter_container, text="Lọc",
@@ -256,9 +277,14 @@ class ProductView:
         tree_frame = tk.Frame(list_frame)
         tree_frame.pack(fill='both', expand=True)
 
+        # Configure style for larger fonts in Treeview
+        style = ttk.Style()
+        style.configure("Custom.Treeview", font=('Arial', 11))
+        style.configure("Custom.Treeview.Heading", font=('Arial', 12, 'bold'))
+
         # Add quantity column for sellers
         if role == "seller":
-            tree = ttk.Treeview(tree_frame, columns=("Tên", "Giá", "SL"), show="headings", height=12)
+            tree = ttk.Treeview(tree_frame, columns=("Tên", "Giá", "SL"), show="headings", height=8, style="Custom.Treeview")
             tree.heading("Tên", text="Tên giày")
             tree.heading("Giá", text="Giá")
             tree.heading("SL", text="SL")
@@ -266,7 +292,7 @@ class ProductView:
             tree.column("Giá", width=100, anchor='e')
             tree.column("SL", width=50, anchor='e')
         else:
-            tree = ttk.Treeview(tree_frame, columns=("Tên", "Giá"), show="headings", height=12)
+            tree = ttk.Treeview(tree_frame, columns=("Tên", "Giá"), show="headings", height=8, style="Custom.Treeview")
             tree.heading("Tên", text="Tên giày")
             tree.heading("Giá", text="Giá")
             tree.column("Tên", width=250)
@@ -290,29 +316,125 @@ class ProductView:
                                        cursor='hand2', bd=2)
             btn_add_to_cart.pack(anchor='w', pady=5)
 
+            # Color and Size selection frame
+            selection_frame = tk.Frame(action_button_frame, bg='white')
+            selection_frame.pack(anchor='w', pady=(10, 5), fill='x')
+
+            # Color and Size on the same line
+            color_size_frame = tk.Frame(selection_frame, bg='white')
+            color_size_frame.pack(fill='x', pady=5)
+
+            # Color selection (left side)
+            color_frame = tk.Frame(color_size_frame, bg='white')
+            color_frame.pack(side='left', fill='x', expand=True, padx=(0, 10))
+
+            tk.Label(color_frame, text="Màu sắc:", font=('Arial', 12, 'bold'), bg='white').pack(anchor='w')
+            color_var = tk.StringVar(value="Đen")
+            color_combo = ttk.Combobox(color_frame, textvariable=color_var, width=12, state='readonly',
+                                      font=('Arial', 11), values=["Trắng", "Xanh Dương", "Đen", "Nâu"])
+            color_combo.pack(anchor='w', pady=(2, 0))
+
+            # Size selection (right side)
+            size_frame = tk.Frame(color_size_frame, bg='white')
+            size_frame.pack(side='right', fill='x', expand=True)
+
+            tk.Label(size_frame, text="Kích cỡ:", font=('Arial', 12, 'bold'), bg='white').pack(anchor='w')
+            size_var = tk.StringVar(value="42")
+            size_combo = ttk.Combobox(size_frame, textvariable=size_var, width=12, state='readonly',
+                                     font=('Arial', 11), values=[str(i) for i in range(36, 46)])
+            size_combo.pack(anchor='w', pady=(2, 0))
+
             status_label = tk.Label(action_button_frame, text="Chọn sản phẩm để kích hoạt nút",
                                    font=('Arial', 10), fg='#7f8c8d')
-            status_label.pack(anchor='w')
+            status_label.pack(anchor='w', pady=(10, 0))
         else:
-            # Delete product button for sellers
-            btn_delete_product = tk.Button(action_button_frame, text="🗑️ Xóa sản phẩm",
-                                          bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
-                                          padx=10, pady=8, relief='raised', state='disabled',
-                                          cursor='hand2', bd=2)
-            btn_delete_product.pack(anchor='w', pady=5)
+            # Product management buttons frame for sellers - FIXED BUTTON ALIGNMENT
+            # First row: Delete and Add buttons (centered and same size)
+            buttons_row1_frame = tk.Frame(action_button_frame)
+            buttons_row1_frame.pack(fill='x', pady=(5, 2))
 
-            status_label = tk.Label(action_button_frame, text="Chọn sản phẩm để xóa",
+            # Create a container for centering the buttons
+            center_container1 = tk.Frame(buttons_row1_frame)
+            center_container1.pack(anchor='center')
+
+            # STANDARDIZED BUTTON PARAMETERS - All buttons exactly the same
+            BUTTON_FONT = ('Arial', 11, 'bold')
+            BUTTON_PADX = 10
+            BUTTON_PADY = 8
+            BUTTON_WIDTH = 16  # Fixed width for all buttons
+            BUTTON_SPACING = 10  # Consistent spacing between buttons
+
+            # Delete product button (left in center container)
+            btn_delete_product = tk.Button(center_container1, text="🗑️ Xóa sản phẩm",
+                                          bg='#e74c3c', fg='white', font=BUTTON_FONT,
+                                          padx=BUTTON_PADX, pady=BUTTON_PADY, relief='raised', state='disabled',
+                                          cursor='hand2', bd=2, width=BUTTON_WIDTH)
+            btn_delete_product.pack(side='left', padx=(0, BUTTON_SPACING))
+
+            # Add product button (right in center container)
+            btn_add_product = tk.Button(center_container1, text="➕ Thêm sản phẩm",
+                                       bg='#27ae60', fg='white', font=BUTTON_FONT,
+                                       padx=BUTTON_PADX, pady=BUTTON_PADY, relief='raised',
+                                       cursor='hand2', bd=2, width=BUTTON_WIDTH,
+                                       command=lambda: self.show_add_product_form(role, username))
+            btn_add_product.pack(side='right')
+
+            # Second row: Edit and Brand buttons (centered and same size)
+            buttons_row2_frame = tk.Frame(action_button_frame)
+            buttons_row2_frame.pack(fill='x', pady=(2, 5))
+
+            # Create a container for centering the buttons
+            center_container2 = tk.Frame(buttons_row2_frame)
+            center_container2.pack(anchor='center')
+
+            # Edit product button (left in center container)
+            btn_edit_product = tk.Button(center_container2, text="✏️ Sửa sản phẩm",
+                                        bg='#f39c12', fg='white', font=BUTTON_FONT,
+                                        padx=BUTTON_PADX, pady=BUTTON_PADY, relief='raised', state='disabled',
+                                        cursor='hand2', bd=2, width=BUTTON_WIDTH)
+            btn_edit_product.pack(side='left', padx=(0, BUTTON_SPACING))
+
+            # Brand management button (right in center container)
+            btn_brand_management = tk.Button(center_container2, text="🏷️ Thương hiệu",
+                                           bg='#9b59b6', fg='white', font=BUTTON_FONT,
+                                           padx=BUTTON_PADX, pady=BUTTON_PADY, relief='raised',
+                                           cursor='hand2', bd=2, width=BUTTON_WIDTH,
+                                           command=lambda: self.show_brand_management(role, username))
+            btn_brand_management.pack(side='right')
+
+            status_label = tk.Label(action_button_frame, text="Chọn sản phẩm để xóa hoặc sửa",
                                    font=('Arial', 10), fg='#7f8c8d')
             status_label.pack(anchor='w')
 
         # Functions
+        def refresh_brand_filter():
+            """Refresh the brand filter dropdown with updated data"""
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT DISTINCT TenTH FROM thuonghieu ORDER BY TenTH")
+                brands = ["Tất cả"] + [row[0] for row in cursor.fetchall()]
+                brand_combo['values'] = brands
+                print(f"Debug: Brand filter updated with {len(brands)-1} brands")
+            except Exception as e:
+                print(f"Error refreshing brand filter: {e}")
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+
         def add_to_cart(ma_sp, ten_sp):
             if role != "buyer":
                 return
 
-            print(f"Debug: Adding {ten_sp} to cart")
+            # Get selected color and size
+            selected_color = color_var.get()
+            selected_size = size_var.get()
 
-            # Save to database instead of just memory
+            print(f"Debug: Adding {ten_sp} (Color: {selected_color}, Size: {selected_size}) to cart")
+
+            # Save to database with selected color and size
             conn = None
             cursor = None
             try:
@@ -343,11 +465,11 @@ class ProductView:
                 else:
                     ma_gh = gh_result[0]
 
-                # Check if product already in cart (with default color and size)
+                # Check if product with same color and size already in cart
                 cursor.execute("""
                     SELECT SoLuong FROM giohangchuasanpham 
-                    WHERE MaGH = %s AND MaSP = %s AND MauSac = 'Đen' AND Size = '42'
-                """, (ma_gh, ma_sp))
+                    WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
+                """, (ma_gh, ma_sp, selected_color, selected_size))
 
                 existing = cursor.fetchone()
 
@@ -357,26 +479,27 @@ class ProductView:
                     cursor.execute("""
                         UPDATE giohangchuasanpham 
                         SET SoLuong = %s 
-                        WHERE MaGH = %s AND MaSP = %s AND MauSac = 'Đen' AND Size = '42'
-                    """, (new_quantity, ma_gh, ma_sp))
+                        WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
+                    """, (new_quantity, ma_gh, ma_sp, selected_color, selected_size))
                 else:
-                    # Add new product with default color and size
+                    # Add new product with selected color and size
                     cursor.execute("""
                         INSERT INTO giohangchuasanpham (MaGH, MaSP, MauSac, Size, SoLuong)
-                        VALUES (%s, %s, 'Đen', '42', 1)
-                    """, (ma_gh, ma_sp))
+                        VALUES (%s, %s, %s, %s, 1)
+                    """, (ma_gh, ma_sp, selected_color, selected_size))
 
                 conn.commit()
 
                 # Update memory cart to sync with UI (temporary)
-                if ma_sp in self.cart:
-                    self.cart[ma_sp] += 1
+                cart_key = f"{ma_sp}_{selected_color}_{selected_size}"
+                if cart_key in self.cart:
+                    self.cart[cart_key] += 1
                 else:
-                    self.cart[ma_sp] = 1
+                    self.cart[cart_key] = 1
 
                 # Update cart button
                 btn_cart.config(text=update_cart_button())
-                messagebox.showinfo("Thành công", f"Đã thêm {ten_sp} vào giỏ hàng!")
+                messagebox.showinfo("Thành công", f"Đã thêm {ten_sp} (Màu: {selected_color}, Size: {selected_size}) vào giỏ hàng!")
 
             except Exception as e:
                 messagebox.showerror("Lỗi", f"Không thể thêm sản phẩm vào giỏ hàng: {str(e)}")
@@ -471,6 +594,9 @@ class ProductView:
                     "quantity": so_luong
                 }
 
+            # Update status label with count
+            status_label.config(text=f"Tổng sản phẩm: {len(filtered_products)}")
+
         # Bind filter events
         btn_search.config(command=filter_products)
         btn_filter.config(command=filter_products)
@@ -497,10 +623,12 @@ class ProductView:
                         status_label.config(text="Nút đã được kích hoạt - Click để thêm vào giỏ!", fg='green')
                         btn_add_to_cart.config(command=lambda: add_to_cart(selected_product_id, product_data[selected_product_id]["name"]))
                     else:
-                        # Enable delete product button
+                        # Enable delete and edit product buttons
                         btn_delete_product.config(state='normal', bg='#e74c3c')
-                        status_label.config(text="Click để xóa sản phẩm đã chọn", fg='red')
+                        btn_edit_product.config(state='normal', bg='#f39c12')
+                        status_label.config(text="Click để xóa hoặc sửa sản phẩm đã chọn", fg='blue')
                         btn_delete_product.config(command=lambda: delete_product(selected_product_id, product_data[selected_product_id]["name"]))
+                        btn_edit_product.config(command=lambda: self.show_edit_product_form(selected_product_id, role, username))
 
                     # Update product details on the right panel
                     product = product_data[selected_product_id]
@@ -532,7 +660,8 @@ class ProductView:
                     status_label.config(text="Click sản phẩm để thêm vào giỏ hàng", fg='#7f8c8d')
                 else:
                     btn_delete_product.config(state='disabled', bg='#95a5a6')
-                    status_label.config(text="Chọn sản phẩm để xóa", fg='#7f8c8d')
+                    btn_edit_product.config(state='disabled', bg='#95a5a6')
+                    status_label.config(text="Chọn sản phẩm để xóa hoặc sửa", fg='#7f8c8d')
 
         # ONLY bind this event - remove any other bindings
         tree.bind("<<TreeviewSelect>>", on_product_select_combined)
@@ -677,7 +806,7 @@ class ProductView:
         # Create add product window
         add_window = tk.Toplevel(self.root)
         add_window.title("Thêm sản phẩm mới")
-        add_window.geometry("500x600")
+        add_window.geometry("500x650")  # Increased height from 600 to 650
         add_window.resizable(False, False)
         add_window.grab_set()  # Make window modal
 
@@ -685,23 +814,27 @@ class ProductView:
         add_window.transient(self.root)
         add_window.focus()
 
+        # Create main container with scrollbar in case content is too long
+        main_container = tk.Frame(add_window)
+        main_container.pack(fill='both', expand=True, padx=10, pady=10)
+
         # Form fields
-        tk.Label(add_window, text="THÊM SẢN PHẨM MỚI", font=('Arial', 16, 'bold'), fg='#2c3e50').pack(pady=20)
+        tk.Label(main_container, text="THÊM SẢN PHẨM MỚI", font=('Arial', 16, 'bold'), fg='#2c3e50').pack(pady=(10, 20))
 
         # Product name
-        tk.Label(add_window, text="Tên sản phẩm:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
-        entry_name = tk.Entry(add_window, font=('Arial', 12), width=40)
-        entry_name.pack(padx=20, pady=(0, 10))
+        tk.Label(main_container, text="Tên sản phẩm:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        entry_name = tk.Entry(main_container, font=('Arial', 12), width=40)
+        entry_name.pack(padx=10, pady=(0, 8))
 
         # Price
-        tk.Label(add_window, text="Giá (VNĐ):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
-        entry_price = tk.Entry(add_window, font=('Arial', 12), width=40)
-        entry_price.pack(padx=20, pady=(0, 10))
+        tk.Label(main_container, text="Giá (VNĐ):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        entry_price = tk.Entry(main_container, font=('Arial', 12), width=40)
+        entry_price.pack(padx=10, pady=(0, 8))
 
         # Brand
-        tk.Label(add_window, text="Thương hiệu:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
+        tk.Label(main_container, text="Thương hiệu:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
         brand_var_add = tk.StringVar()
-        brand_combo_add = ttk.Combobox(add_window, textvariable=brand_var_add, font=('Arial', 12), width=37, state='readonly')
+        brand_combo_add = ttk.Combobox(main_container, textvariable=brand_var_add, font=('Arial', 12), width=37, state='readonly')
 
         # Load brands
         try:
@@ -718,26 +851,26 @@ class ProductView:
             if conn:
                 conn.close()
 
-        brand_combo_add.pack(padx=20, pady=(0, 10))
+        brand_combo_add.pack(padx=10, pady=(0, 8))
 
         # Quantity
-        tk.Label(add_window, text="Số lượng:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
-        entry_quantity = tk.Entry(add_window, font=('Arial', 12), width=40)
-        entry_quantity.pack(padx=20, pady=(0, 10))
+        tk.Label(main_container, text="Số lượng:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        entry_quantity = tk.Entry(main_container, font=('Arial', 12), width=40)
+        entry_quantity.pack(padx=10, pady=(0, 8))
 
         # Description
-        tk.Label(add_window, text="Mô tả:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
-        text_description = tk.Text(add_window, font=('Arial', 11), width=42, height=6, wrap='word')
-        text_description.pack(padx=20, pady=(0, 10))
+        tk.Label(main_container, text="Mô tả:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        text_description = tk.Text(main_container, font=('Arial', 11), width=42, height=5, wrap='word')  # Reduced height from 6 to 5
+        text_description.pack(padx=10, pady=(0, 8))
 
         # Image URLs
-        tk.Label(add_window, text="URL hình ảnh (mỗi URL một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
-        text_images = tk.Text(add_window, font=('Arial', 11), width=42, height=4, wrap='word')
-        text_images.pack(padx=20, pady=(0, 20))
+        tk.Label(main_container, text="URL hình ảnh (mỗi URL một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        text_images = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')  # Reduced height from 4 to 3
+        text_images.pack(padx=10, pady=(0, 15))
 
-        # Buttons
-        button_frame = tk.Frame(add_window)
-        button_frame.pack(pady=10)
+        # Buttons frame - ensure it's always visible
+        button_frame = tk.Frame(main_container, bg='#f0f0f0', relief='ridge', bd=1)
+        button_frame.pack(fill='x', pady=(10, 10))
 
         def save_product():
             # Get form data
@@ -811,10 +944,472 @@ class ProductView:
                 if conn:
                     conn.close()
 
-        tk.Button(button_frame, text="Lưu", command=save_product,
-                 bg='#27ae60', fg='white', font=('Arial', 12, 'bold'), padx=20).pack(side='left', padx=10)
-        tk.Button(button_frame, text="Hủy", command=add_window.destroy,
-                 bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'), padx=20).pack(side='left', padx=10)
+        # Action buttons with better visibility
+        tk.Button(button_frame, text="💾 Lưu", command=save_product,
+                 bg='#27ae60', fg='white', font=('Arial', 12, 'bold'),
+                 padx=25, pady=10).pack(side='left', padx=15, pady=10)
+        tk.Button(button_frame, text="❌ Hủy", command=add_window.destroy,
+                 bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'),
+                 padx=25, pady=10).pack(side='right', padx=15, pady=10)
+
+    def show_edit_product_form(self, product_id, role, username):
+        """Show edit product form with current data loaded"""
+        # First, get current product data from database
+        conn = None
+        cursor = None
+        current_data = {}
+        current_images = []
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Get product details
+            cursor.execute("""
+                SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, sp.MaTH, sp.SoLuong, th.TenTH
+                FROM sanpham sp
+                LEFT JOIN thuonghieu th ON sp.MaTH = th.MaTH
+                WHERE sp.MaSP = %s
+            """, (product_id,))
+
+            result = cursor.fetchone()
+            if not result:
+                messagebox.showerror("Lỗi", "Không tìm thấy sản phẩm!")
+                return
+
+            current_data = {
+                'id': result[0],
+                'name': result[1],
+                'price': result[2],
+                'description': result[3] or "",
+                'brand_id': result[4],
+                'quantity': result[5],
+                'brand_name': result[6]
+            }
+
+            # Get product images
+            cursor.execute("SELECT URLAnh FROM url_sp WHERE MaSP = %s", (product_id,))
+            current_images = [row[0] for row in cursor.fetchall()]
+
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể tải dữ liệu sản phẩm: {str(e)}")
+            return
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+        # Create edit product window
+        edit_window = tk.Toplevel(self.root)
+        edit_window.title(f"Sửa sản phẩm: {current_data['name']}")
+        edit_window.geometry("500x650")
+        edit_window.resizable(False, False)
+        edit_window.grab_set()  # Make window modal
+
+        # Center the window
+        edit_window.transient(self.root)
+        edit_window.focus()
+
+        # Create main container
+        main_container = tk.Frame(edit_window)
+        main_container.pack(fill='both', expand=True, padx=10, pady=10)
+
+        # Form fields
+        tk.Label(main_container, text=f"SỬA SẢN PHẨM: {current_data['name']}",
+                font=('Arial', 16, 'bold'), fg='#f39c12').pack(pady=(10, 20))
+
+        # Product name
+        tk.Label(main_container, text="Tên sản phẩm:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        entry_name = tk.Entry(main_container, font=('Arial', 12), width=40)
+        entry_name.insert(0, current_data['name'])
+        entry_name.pack(padx=10, pady=(0, 8))
+
+        # Price
+        tk.Label(main_container, text="Giá (VNĐ):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        entry_price = tk.Entry(main_container, font=('Arial', 12), width=40)
+        entry_price.insert(0, str(current_data['price']))
+        entry_price.pack(padx=10, pady=(0, 8))
+
+        # Brand
+        tk.Label(main_container, text="Thương hiệu:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        brand_var_edit = tk.StringVar()
+        brand_combo_edit = ttk.Combobox(main_container, textvariable=brand_var_edit, font=('Arial', 12), width=37, state='readonly')
+
+        # Load brands and set current brand
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT MaTH, TenTH FROM thuonghieu ORDER BY TenTH")
+            brands_data = cursor.fetchall()
+            brand_options = [f"{th[1]} ({th[0]})" for th in brands_data]
+            brand_combo_edit['values'] = brand_options
+
+            # Set current brand as selected
+            current_brand_text = f"{current_data['brand_name']} ({current_data['brand_id']})"
+            brand_var_edit.set(current_brand_text)
+
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể tải danh sách thương hiệu: {str(e)}")
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+        brand_combo_edit.pack(padx=10, pady=(0, 8))
+
+        # Quantity
+        tk.Label(main_container, text="Số lượng:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        entry_quantity = tk.Entry(main_container, font=('Arial', 12), width=40)
+        entry_quantity.insert(0, str(current_data['quantity']))
+        entry_quantity.pack(padx=10, pady=(0, 8))
+
+        # Description
+        tk.Label(main_container, text="Mô tả:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        text_description = tk.Text(main_container, font=('Arial', 11), width=42, height=5, wrap='word')
+        text_description.insert(1.0, current_data['description'])
+        text_description.pack(padx=10, pady=(0, 8))
+
+        # Image URLs
+        tk.Label(main_container, text="URL hình ảnh (mỗi URL một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        text_images = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')
+        if current_images:
+            text_images.insert(1.0, '\n'.join(current_images))
+        text_images.pack(padx=10, pady=(0, 15))
+
+        # Buttons frame
+        button_frame = tk.Frame(main_container, bg='#f0f0f0', relief='ridge', bd=1)
+        button_frame.pack(fill='x', pady=(10, 10))
+
+        def update_product():
+            # Get form data
+            name = entry_name.get().strip()
+            price_str = entry_price.get().strip()
+            brand_selection = brand_var_edit.get()
+            quantity_str = entry_quantity.get().strip()
+            description = text_description.get(1.0, tk.END).strip()
+            image_urls = text_images.get(1.0, tk.END).strip()
+
+            # Validation
+            if not all([name, price_str, brand_selection, quantity_str]):
+                messagebox.showerror("Lỗi", "Vui lòng nhập đầy đủ thông tin bắt buộc!")
+                return
+
+            try:
+                price = float(price_str)
+                if price <= 0:
+                    raise ValueError("Giá phải lớn hơn 0")
+                quantity = int(quantity_str)
+                if quantity < 0:
+                    raise ValueError("Số lượng phải >= 0")
+            except ValueError as e:
+                messagebox.showerror("Lỗi", f"Dữ liệu không hợp lệ: {str(e)}")
+                return
+
+            # Extract brand ID
+            try:
+                brand_id = brand_selection.split('(')[1].replace(')', '')
+            except:
+                messagebox.showerror("Lỗi", "Vui lòng chọn thương hiệu!")
+                return
+
+            # Update database
+            conn = None
+            cursor = None
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+
+                # Update product
+                cursor.execute("""
+                    UPDATE sanpham 
+                    SET TenSP = %s, Gia = %s, MoTa = %s, MaTH = %s, SoLuong = %s
+                    WHERE MaSP = %s
+                """, (name, price, description if description else None, brand_id, quantity, product_id))
+
+                # Delete old images
+                cursor.execute("DELETE FROM url_sp WHERE MaSP = %s", (product_id,))
+
+                # Insert new image URLs if provided
+                if image_urls:
+                    urls = [url.strip() for url in image_urls.split('\n') if url.strip()]
+                    for url in urls:
+                        cursor.execute("INSERT INTO url_sp (MaSP, URLAnh) VALUES (%s, %s)", (product_id, url))
+
+                conn.commit()
+                messagebox.showinfo("Thành công", f"Đã cập nhật sản phẩm '{name}' thành công!")
+                edit_window.destroy()
+
+                # Refresh the product list
+                self.show_shoes(role, username)
+
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể cập nhật sản phẩm: {str(e)}")
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+
+        # Action buttons
+        tk.Button(button_frame, text="💾 Cập nhật", command=update_product,
+                 bg='#f39c12', fg='white', font=('Arial', 12, 'bold'),
+                 padx=25, pady=10).pack(side='left', padx=15, pady=10)
+        tk.Button(button_frame, text="❌ Hủy", command=edit_window.destroy,
+                 bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'),
+                 padx=25, pady=10).pack(side='right', padx=15, pady=10)
+
+    def show_brand_management(self, role, username):
+        """Show brand management interface for sellers"""
+        # Create brand management window
+        brand_window = tk.Toplevel(self.root)
+        brand_window.title("Quản lý thương hiệu")
+        brand_window.geometry("600x500")
+        brand_window.resizable(False, False)
+        brand_window.grab_set()  # Make window modal
+
+        # Center the window
+        brand_window.transient(self.root)
+        brand_window.focus()
+
+        # Header
+        header_frame = tk.Frame(brand_window, bg='#9b59b6', height=60)
+        header_frame.pack(fill='x')
+        header_frame.pack_propagate(False)
+
+        tk.Label(header_frame, text="QUẢN LÝ THƯƠNG HIỆU", font=('Arial', 18, 'bold'),
+                 fg='white', bg='#9b59b6').pack(pady=15)
+
+        # Main content frame
+        main_frame = tk.Frame(brand_window)
+        main_frame.pack(fill='both', expand=True, padx=15, pady=10)
+
+        # Brand list frame
+        list_frame = tk.Frame(main_frame)
+        list_frame.pack(fill='both', expand=True, pady=(0, 10))
+
+        tk.Label(list_frame, text="Danh sách thương hiệu:", font=('Arial', 14, 'bold')).pack(anchor='w', pady=(0, 10))
+
+        # Treeview for brands
+        tree_frame = tk.Frame(list_frame)
+        tree_frame.pack(fill='both', expand=True)
+
+        # Configure style
+        style = ttk.Style()
+        style.configure("Brand.Treeview", font=('Arial', 12))
+        style.configure("Brand.Treeview.Heading", font=('Arial', 13, 'bold'))
+
+        brand_tree = ttk.Treeview(tree_frame, columns=("Mã TH", "Tên thương hiệu"), show="headings",
+                                 height=12, style="Brand.Treeview")
+        brand_tree.heading("Mã TH", text="Mã thương hiệu")
+        brand_tree.heading("Tên thương hiệu", text="Tên thương hiệu")
+        brand_tree.column("Mã TH", width=150, anchor='center')
+        brand_tree.column("Tên thương hiệu", width=300, anchor='w')
+
+        scrollbar_brand = ttk.Scrollbar(tree_frame, orient="vertical", command=brand_tree.yview)
+        brand_tree.configure(yscrollcommand=scrollbar_brand.set)
+
+        brand_tree.pack(side="left", fill="both", expand=True)
+        scrollbar_brand.pack(side="right", fill="y")
+
+        # Buttons frame
+        button_frame = tk.Frame(main_frame)
+        button_frame.pack(fill='x', pady=(10, 0))
+
+        # First row: Delete and Add buttons
+        buttons_row1 = tk.Frame(button_frame)
+        buttons_row1.pack(fill='x', pady=(0, 5))
+
+        btn_delete_brand = tk.Button(buttons_row1, text="🗑️ Xóa thương hiệu",
+                                    bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
+                                    padx=15, pady=8, relief='raised', state='disabled',
+                                    cursor='hand2', bd=2)
+        btn_delete_brand.pack(side='left')
+
+        btn_add_brand = tk.Button(buttons_row1, text="➕ Thêm thương hiệu",
+                                 bg='#27ae60', fg='white', font=('Arial', 12, 'bold'),
+                                 padx=15, pady=8, relief='raised',
+                                 cursor='hand2', bd=2)
+        btn_add_brand.pack(side='right')
+
+        # Status label
+        status_brand_label = tk.Label(button_frame, text="Chọn thương hiệu để xóa",
+                                     font=('Arial', 10), fg='#7f8c8d')
+        status_brand_label.pack(pady=(5, 0))
+
+        # Load brand data
+        def load_brands():
+            # Clear current items
+            for item in brand_tree.get_children():
+                brand_tree.delete(item)
+
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT MaTH, TenTH FROM thuonghieu ORDER BY TenTH")
+                brands = cursor.fetchall()
+
+                for ma_th, ten_th in brands:
+                    brand_tree.insert("", "end", iid=ma_th, values=(ma_th, ten_th))
+
+                status_brand_label.config(text=f"Tổng số thương hiệu: {len(brands)}")
+
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể tải danh sách thương hiệu: {str(e)}")
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+
+        # Brand selection handler
+        selected_brand_id = None
+
+        def on_brand_select(event):
+            nonlocal selected_brand_id
+            selection = brand_tree.selection()
+
+            if selection:
+                selected_brand_id = selection[0]
+                btn_delete_brand.config(state='normal', bg='#e74c3c')
+                status_brand_label.config(text="Click để xóa thương hiệu đã chọn", fg='red')
+            else:
+                selected_brand_id = None
+                btn_delete_brand.config(state='disabled', bg='#95a5a6')
+                status_brand_label.config(text="Chọn thương hiệu để xóa", fg='#7f8c8d')
+
+        brand_tree.bind("<<TreeviewSelect>>", on_brand_select)
+
+        # Delete brand function
+        def delete_brand():
+            if not selected_brand_id:
+                return
+
+            # Get brand name for confirmation
+            selected_item = brand_tree.item(selected_brand_id)
+            brand_name = selected_item['values'][1]
+
+            result = messagebox.askyesno("Xác nhận",
+                                       f"Bạn có chắc chắn muốn xóa thương hiệu '{brand_name}' không?\n\n"
+                                       f"Lưu ý: Tất cả sản phẩm của thương hiệu này cũng sẽ bị xóa!")
+            if not result:
+                return
+
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+
+                # Delete products of this brand first
+                cursor.execute("DELETE FROM url_sp WHERE MaSP IN (SELECT MaSP FROM sanpham WHERE MaTH = %s)", (selected_brand_id,))
+                cursor.execute("DELETE FROM sanpham WHERE MaTH = %s", (selected_brand_id,))
+
+                # Delete brand
+                cursor.execute("DELETE FROM thuonghieu WHERE MaTH = %s", (selected_brand_id,))
+
+                conn.commit()
+                messagebox.showinfo("Thành công", f"Đã xóa thương hiệu '{brand_name}' thành công!")
+
+                # Refresh brand list in this window
+                load_brands()
+
+                # Refresh the product view's brand filter
+                self.refresh_brand_filter()
+
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể xóa thương hiệu: {str(e)}")
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+
+        # Add brand function
+        def add_brand():
+            # Create add brand dialog
+            add_brand_window = tk.Toplevel(brand_window)
+            add_brand_window.title("Thêm thương hiệu mới")
+            add_brand_window.geometry("400x200")
+            add_brand_window.resizable(False, False)
+            add_brand_window.grab_set()
+            add_brand_window.transient(brand_window)
+            add_brand_window.focus()
+
+            # Form
+            form_frame = tk.Frame(add_brand_window)
+            form_frame.pack(fill='both', expand=True, padx=20, pady=20)
+
+            tk.Label(form_frame, text="THÊM THƯƠNG HIỆU MỚI", font=('Arial', 14, 'bold'),
+                     fg='#27ae60').pack(pady=(0, 20))
+
+            tk.Label(form_frame, text="Tên thương hiệu:", font=('Arial', 12, 'bold')).pack(anchor='w')
+            entry_brand_name = tk.Entry(form_frame, font=('Arial', 12), width=30)
+            entry_brand_name.pack(pady=(5, 20), fill='x')
+            entry_brand_name.focus()
+
+            # Buttons
+            button_frame_add = tk.Frame(form_frame)
+            button_frame_add.pack(fill='x')
+
+            def save_brand():
+                brand_name = entry_brand_name.get().strip()
+                if not brand_name:
+                    messagebox.showerror("Lỗi", "Vui lòng nhập tên thương hiệu!")
+                    return
+
+                try:
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+
+                    # Check if brand already exists
+                    cursor.execute("SELECT MaTH FROM thuonghieu WHERE TenTH = %s", (brand_name,))
+                    if cursor.fetchone():
+                        messagebox.showerror("Lỗi", f"Thương hiệu '{brand_name}' đã tồn tại!")
+                        return
+
+                    # Generate new brand ID
+                    cursor.execute("SELECT MAX(CAST(SUBSTRING(MaTH, 3) AS UNSIGNED)) FROM thuonghieu WHERE MaTH LIKE 'TH%'")
+                    result = cursor.fetchone()
+                    next_number = ((result[0] or 0) + 1) if result and result[0] is not None else 1
+                    brand_id = f"TH{next_number:03d}"
+
+                    # Insert brand
+                    cursor.execute("INSERT INTO thuonghieu (MaTH, TenTH) VALUES (%s, %s)", (brand_id, brand_name))
+                    conn.commit()
+
+                    messagebox.showinfo("Thành công", f"Đã thêm thương hiệu '{brand_name}' thành công!")
+                    add_brand_window.destroy()
+
+                    # Refresh brand list in this window
+                    load_brands()
+
+                    # Refresh the product view's brand filter
+                    self.refresh_brand_filter()
+
+                except Exception as e:
+                    messagebox.showerror("Lỗi", f"Không thể thêm thương hiệu: {str(e)}")
+                finally:
+                    if cursor:
+                        cursor.close()
+                    if conn:
+                        conn.close()
+
+            tk.Button(button_frame_add, text="💾 Lưu", command=save_brand,
+                     bg='#27ae60', fg='white', font=('Arial', 11, 'bold'),
+                     padx=20, pady=8).pack(side='left', padx=(0, 10))
+            tk.Button(button_frame_add, text="❌ Hủy", command=add_brand_window.destroy,
+                     bg='#95a5a6', fg='white', font=('Arial', 11, 'bold'),
+                     padx=20, pady=8).pack(side='right')
+
+            # Enter key to save
+            entry_brand_name.bind('<Return>', lambda e: save_brand())
+
+        # Bind button functions
+        btn_delete_brand.config(command=delete_brand)
+        btn_add_brand.config(command=add_brand)
+
+        # Load initial data
+        load_brands()
 
     def set_show_cart_callback(self, callback):
         """Set callback for showing cart"""
