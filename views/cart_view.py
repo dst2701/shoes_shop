@@ -122,32 +122,33 @@ class CartView:
         tk.Label(main_frame, text="Chi tiết giỏ hàng:", font=('Arial', 16, 'bold'),
                  bg='#f8f9fa').pack(anchor='w', pady=(0, 10))
 
-        # Table header
-        header_frame_table = tk.Frame(main_frame, bg='#34495e', height=40)
-        header_frame_table.pack(fill='x', pady=(0, 5))
+        # Table header with better alignment
+        header_frame_table = tk.Frame(main_frame, bg='#34495e', height=45)
+        header_frame_table.pack(fill='x', pady=(0, 2))
         header_frame_table.pack_propagate(False)
 
-        # Header labels
-        tk.Label(header_frame_table, text="Tên sản phẩm", font=('Arial', 12, 'bold'),
-                 bg='#34495e', fg='white', width=25, anchor='w').pack(side='left', padx=5, pady=5)
-        tk.Label(header_frame_table, text="Màu sắc", font=('Arial', 12, 'bold'),
-                 bg='#34495e', fg='white', width=10).pack(side='left', padx=5, pady=5)
-        tk.Label(header_frame_table, text="Size", font=('Arial', 12, 'bold'),
-                 bg='#34495e', fg='white', width=8).pack(side='left', padx=5, pady=5)
-        tk.Label(header_frame_table, text="Số lượng", font=('Arial', 12, 'bold'),
-                 bg='#34495e', fg='white', width=10).pack(side='left', padx=5, pady=5)
-        tk.Label(header_frame_table, text="Đơn giá", font=('Arial', 12, 'bold'),
-                 bg='#34495e', fg='white', width=12).pack(side='left', padx=5, pady=5)
-        tk.Label(header_frame_table, text="Thành tiền", font=('Arial', 12, 'bold'),
-                 bg='#34495e', fg='white', width=12).pack(side='left', padx=5, pady=5)
-        tk.Label(header_frame_table, text="Hành động", font=('Arial', 12, 'bold'),
-                 bg='#34495e', fg='white', width=10).pack(side='left', padx=5, pady=5)
+        # Create header columns with consistent widths
+        header_cols = [
+            ("Tên sản phẩm", 0.25, 'w'),
+            ("Màu sắc", 0.12, 'center'),
+            ("Size", 0.08, 'center'),
+            ("Số lượng", 0.12, 'center'),
+            ("Đơn giá", 0.15, 'e'),
+            ("Thành tiền", 0.15, 'e'),
+            ("Hành động", 0.13, 'center')
+        ]
+
+        for i, (text, width_ratio, anchor) in enumerate(header_cols):
+            header_label = tk.Label(header_frame_table, text=text, font=('Arial', 12, 'bold'),
+                                   bg='#34495e', fg='white', anchor=anchor)
+            header_label.place(relx=sum(col[1] for col in header_cols[:i]), rely=0,
+                              relwidth=width_ratio, relheight=1)
 
         # Items container
         items_container = tk.Frame(main_frame, bg='#f8f9fa')
         items_container.pack(fill='both', expand=True, pady=(0, 20))
 
-        # Function to remove item from cart - cập nhật để xóa t�� database
+        # Function to remove item from cart - cập nhật để xóa từ database
         def remove_from_cart_db(product_id, color, size):
             result = messagebox.askyesno("Xác nhận xóa",
                                        f"Bạn có chắc muốn xóa sản phẩm này khỏi giỏ hàng?")
@@ -187,51 +188,48 @@ class CartView:
                 if conn:
                     conn.close()
 
-        # Create product rows
+        # Create product rows with consistent alignment
         for cart_key, product in cart_products.items():
-            # Product row frame
-            product_frame = tk.Frame(items_container, bg='white', relief='solid', bd=1, height=60)
-            product_frame.pack(fill='x', pady=2)
+            # Product row frame with consistent height
+            product_frame = tk.Frame(items_container, bg='white', relief='solid', bd=1, height=65)
+            product_frame.pack(fill='x', pady=1)
             product_frame.pack_propagate(False)
 
-            # Product name
-            name_label = tk.Label(product_frame, text=product['name'], font=('Arial', 11),
-                                 bg='white', width=25, anchor='w', wraplength=180)
-            name_label.pack(side='left', padx=5, pady=10)
+            # Create row data with same width ratios as headers
+            row_data = [
+                (product['name'], 0.25, 'w', 'text'),
+                (product['color'], 0.12, 'center', 'text'),
+                (product['size'], 0.08, 'center', 'text'),
+                (str(product['quantity']), 0.12, 'center', 'text'),
+                (f"{product['price']:,.0f} VNĐ", 0.15, 'e', 'text'),
+                (f"{product['total']:,.0f} VNĐ", 0.15, 'e', 'price'),
+                ("", 0.13, 'center', 'button')
+            ]
 
-            # Color
-            color_label = tk.Label(product_frame, text=product['color'], font=('Arial', 11),
-                                  bg='white', width=10)
-            color_label.pack(side='left', padx=5, pady=10)
+            for i, (content, width_ratio, anchor, content_type) in enumerate(row_data):
+                x_pos = sum(col[1] for col in row_data[:i])
 
-            # Size
-            size_label = tk.Label(product_frame, text=product['size'], font=('Arial', 11),
-                                 bg='white', width=8)
-            size_label.pack(side='left', padx=5, pady=10)
-
-            # Quantity
-            qty_label = tk.Label(product_frame, text=str(product['quantity']), font=('Arial', 11),
-                                bg='white', width=10)
-            qty_label.pack(side='left', padx=5, pady=10)
-
-            # Unit price
-            price_display = f"{product['price']:,.0f} VNĐ"
-            price_label = tk.Label(product_frame, text=price_display, font=('Arial', 11),
-                                  bg='white', width=12)
-            price_label.pack(side='left', padx=5, pady=10)
-
-            # Total price
-            total_display = f"{product['total']:,.0f} VNĐ"
-            total_label = tk.Label(product_frame, text=total_display, font=('Arial', 11, 'bold'),
-                                  bg='white', width=12, fg='#e74c3c')
-            total_label.pack(side='left', padx=5, pady=10)
-
-            # Remove button
-            btn_remove = tk.Button(product_frame, text="🗑️",
-                                  command=lambda pid=product['product_id'], color=product['color'], size=product['size']: remove_from_cart_db(pid, color, size),
-                                  bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
-                                  width=8, cursor='hand2', relief='flat')
-            btn_remove.pack(side='left', padx=5, pady=5)
+                if content_type == 'button':
+                    # Remove button
+                    btn_remove = tk.Button(product_frame, text="🗑️",
+                                          command=lambda pid=product['product_id'], color=product['color'],
+                                          size=product['size']: remove_from_cart_db(pid, color, size),
+                                          bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
+                                          cursor='hand2', relief='flat', width=6, height=1)
+                    btn_remove.place(relx=x_pos + (width_ratio - 0.08)/2, rely=0.2,
+                                    relwidth=0.08, relheight=0.6)
+                elif content_type == 'price':
+                    # Price labels with special formatting
+                    price_label = tk.Label(product_frame, text=content, font=('Arial', 11, 'bold'),
+                                          bg='white', anchor=anchor, fg='#e74c3c')
+                    price_label.place(relx=x_pos, rely=0, relwidth=width_ratio, relheight=1)
+                else:
+                    # Regular text labels
+                    label = tk.Label(product_frame, text=content, font=('Arial', 11),
+                                    bg='white', anchor=anchor)
+                    if content_type == 'text' and i == 0:  # Product name - add wrapping
+                        label.config(wraplength=int(width_ratio * 800))  # Approximate wrapping width
+                    label.place(relx=x_pos, rely=0, relwidth=width_ratio, relheight=1)
 
         # Total section
         total_frame = tk.Frame(main_frame, bg='#ecf0f1', relief='ridge', bd=2)

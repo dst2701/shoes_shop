@@ -1,28 +1,81 @@
 """
-Giao diện hiển thị sản phẩm - thiết kế giống hệt file gốc
+Product View - matches main.py structure exactly
 """
 import tkinter as tk
-from tkinter import ttk, messagebox
-from views.base_view import BaseView
-from models.product import get_all_products, get_product_images
+from tkinter import messagebox, ttk
+from PIL import Image, ImageTk
+import urllib.request
+import io
+import os
+from config.database import get_db_connection, BASE_DIR, LOCAL_IMAGE_DIR
 from utils.image_utils import load_image_safely, load_thumbnail_image
 
-class ProductView(BaseView):
-    def __init__(self, role=None, username=None):
-        super().__init__("Shop Shoes - Danh sách sản phẩm", "1400x800")  # Tăng kích thước cửa sổ
-        self.role = role
-        self.username = username
-        self.product_data = {}
-        self.product_images = {}
-        # Add image reference storage to prevent garbage collection
-        self.current_main_image = None
-        self.thumbnail_images = []
-        self.setup_ui()
+class ProductView:
+    def __init__(self, root):
+        self.root = root
+        self.cart = {}  # Memory cart for UI sync
 
-    def setup_ui(self):
-        """Thiết lập giao diện sản phẩm với thanh tìm kiếm rõ ràng và giỏ hàng"""
-        # Header frame giống file gốc
-        header_frame = tk.Frame(self.root, bg='#2c3e50', height=70)  # Tăng height cho cart
+    def load_cart_from_database(self, username):
+        """Load cart data from database - from main.py"""
+        if not username:
+            return
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Get MaKH from username
+            cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
+            result = cursor.fetchone()
+            if not result:
+                return
+
+            ma_kh = result[0]
+
+            # Get MaGH from MaKH
+            cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+            gh_result = cursor.fetchone()
+            if not gh_result:
+                return
+
+            ma_gh = gh_result[0]
+
+            # Get all products in cart from database
+            cursor.execute("""
+                SELECT MaSP, SoLuong FROM giohangchuasanpham 
+                WHERE MaGH = %s
+            """, (ma_gh,))
+
+            cart_items = cursor.fetchall()
+
+            # Clear and reload cart from database
+            self.cart.clear()
+            for ma_sp, so_luong in cart_items:
+                self.cart[ma_sp] = so_luong
+
+            print(f"Debug: Loaded cart from database: {self.cart}")
+
+        except Exception as e:
+            print(f"Error loading cart from database: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    def show_shoes(self, role=None, username=None):
+        """Show product list - from main.py"""
+        for widget in self.root.winfo_children():
+            widget.destroy()
+
+        self.root.title("Shop Shoes - Danh sách sản phẩm")
+        self.root.geometry("1200x750")
+
+        # Load cart data from database when login
+        if role == "buyer":
+            self.load_cart_from_database(username)
+
+        header_frame = tk.Frame(self.root, bg='#2c3e50', height=60)
         header_frame.pack(fill='x')
         header_frame.pack_propagate(False)
 
@@ -32,259 +85,142 @@ class ProductView(BaseView):
         tk.Label(header_container, text="SHOP GIÀY", font=('Arial', 20, 'bold'),
                  fg='white', bg='#2c3e50').pack(side='left', pady=15)
 
-        # Right side: Cart, User info, Logout
-        right_header = tk.Frame(header_container, bg='#2c3e50')
-        right_header.pack(side='right', pady=15)
+        # Role-specific buttons
+        if role == "buyer":
+            # Cart button for buyers
+            def update_cart_button():
+                """Calculate cart count from database for current user"""
+                if not username:
+                    return "🛒 Giỏ hàng (0)"
 
-        # Cart button với số lượng
-        self.cart_count = 0
-        cart_frame = tk.Frame(right_header, bg='#2c3e50')
-        cart_frame.pack(side='right', padx=(0, 15))
+                try:
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
 
-        self.cart_btn = tk.Button(cart_frame, text=f"🛒 Giỏ hàng ({self.cart_count})",
-                                 command=self.open_cart,
-                                 bg='#f39c12', fg='white', relief='flat',
-                                 font=('Arial', 12, 'bold'), padx=12, pady=8,
-                                 cursor='hand2')
-        self.cart_btn.pack()
+                    # Get MaKH from username
+                    cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
+                    result = cursor.fetchone()
+                    if not result:
+                        return "🛒 Giỏ hàng (0)"
 
-        btn_logout = tk.Button(right_header, text="Đăng xuất", command=self.handle_logout,
+                    ma_kh = result[0]
+
+                    # Get MaGH from MaKH
+                    cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+                    gh_result = cursor.fetchone()
+                    if not gh_result:
+                        return "🛒 Giỏ hàng (0)"
+
+                    ma_gh = gh_result[0]
+
+                    # Calculate total quantity from giohangchuasanpham
+                    cursor.execute("SELECT SUM(SoLuong) FROM giohangchuasanpham WHERE MaGH = %s", (ma_gh,))
+                    count_result = cursor.fetchone()
+                    cart_count = count_result[0] if count_result and count_result[0] else 0
+
+                    return f"🛒 Giỏ hàng ({cart_count})"
+
+                except Exception as e:
+                    print(f"Error calculating cart count: {e}")
+                    return "🛒 Giỏ hàng (0)"
+                finally:
+                    if cursor:
+                        cursor.close()
+                    if conn:
+                        conn.close()
+
+            btn_cart = tk.Button(header_container, text=update_cart_button(),
+                                command=lambda: self.show_cart_callback(username, role) if hasattr(self, 'show_cart_callback') else None,
+                                bg='#f39c12', fg='white', relief='flat',
+                                font=('Arial', 12, 'bold'), padx=15, pady=5)
+            btn_cart.pack(side='right', pady=15, padx=(0, 10))
+        else:
+            # Product management button for employees
+            btn_add_product = tk.Button(header_container, text="➕ Thêm sản phẩm", command=lambda: self.show_add_product_form(role, username),
+                                       bg='#27ae60', fg='white', relief='flat',
+                                       font=('Arial', 12, 'bold'), padx=15, pady=5)
+            btn_add_product.pack(side='right', pady=15, padx=(0, 10))
+
+        btn_logout = tk.Button(header_container, text="Đăng xuất",
+                              command=lambda: self.logout_callback() if hasattr(self, 'logout_callback') else None,
                               bg='#e74c3c', fg='white', relief='flat',
-                              font=('Arial', 12), padx=12, pady=8)
-        btn_logout.pack(side='right', padx=(0, 10))
+                              font=('Arial', 15), padx=15, pady=5)
+        btn_logout.pack(side='right', pady=15)
 
-        if self.username:
-            role_label = "Người bán" if self.role == "seller" else "Khách hàng"
-            tk.Label(right_header, text=f"{role_label}: {self.username}",
-                     font=('Arial', 11), fg='white', bg='#2c3e50').pack(side='right', padx=(0, 15))
+        if username:
+            role_label = "Người bán" if role == "seller" else "Khách hàng"
+            tk.Label(header_container, text=f"{role_label}: {username}",
+                     font=('Arial', 14), fg='white', bg='#2c3e50').pack(side='right', pady=15, padx=(0, 15))
 
-        # Load product data và cart
-        self.load_product_data()
-        self.load_cart_count()
+        # Search and Filter Frame
+        search_frame = tk.Frame(self.root, bg='#ecf0f1', height=80)
+        search_frame.pack(fill='x', padx=10, pady=(5, 0))
+        search_frame.pack_propagate(False)
 
-        # THANH TÌM KIẾM - Layout cải thiện với màu sắc rõ ràng
-        search_outer = tk.Frame(self.root, bg='#34495e', relief='raised', bd=3)
-        search_outer.pack(fill='x', padx=8, pady=(8, 0))
-
-        search_frame = tk.Frame(search_outer, bg='#ecf0f1', relief='ridge', bd=2)
-        search_frame.pack(fill='x', padx=3, pady=3)
-
+        # Search bar
         search_container = tk.Frame(search_frame, bg='#ecf0f1')
-        search_container.pack(fill='x', padx=12, pady=10)
+        search_container.pack(side='left', fill='y', pady=10)
 
-        # Search label với icon lớn hơn
-        tk.Label(search_container, text="🔍 TÌM KIẾM SẢN PHẨM:",
-                 font=('Arial', 13, 'bold'), bg='#ecf0f1', fg='#2c3e50').pack(side='left')
+        tk.Label(search_container, text="Tìm kiếm:", font=('Arial', 12, 'bold'),
+                 bg='#ecf0f1').pack(side='left', padx=(10, 5))
 
-        # Search controls
-        search_controls = tk.Frame(search_container, bg='#ecf0f1')
-        search_controls.pack(side='right')
+        search_var = tk.StringVar()
+        search_entry = tk.Entry(search_container, textvariable=search_var, font=('Arial', 12), width=25)
+        search_entry.pack(side='left', padx=5)
 
-        self.search_var = tk.StringVar()
-        self.search_entry = tk.Entry(search_controls, textvariable=self.search_var,
-                                    font=('Arial', 11), width=25, relief='solid', bd=2)
-        self.search_entry.pack(side='left', padx=(0, 8))
+        btn_search = tk.Button(search_container, text="🔍",
+                              bg='#3498db', fg='white', font=('Arial', 12, 'bold'), padx=10)
+        btn_search.pack(side='left', padx=5)
 
-        tk.Button(search_controls, text="Tìm kiếm", command=self.apply_filters,
-                 bg='#3498db', fg='white', font=('Arial', 10, 'bold'),
-                 relief='flat', padx=12, pady=6, cursor='hand2').pack(side='left', padx=2)
-
-        tk.Button(search_controls, text="Xóa", command=self.clear_search,
-                 bg='#95a5a6', fg='white', font=('Arial', 10, 'bold'),
-                 relief='flat', padx=12, pady=6, cursor='hand2').pack(side='left', padx=2)
-
-        # BỘ LỌC - Layout cải thiện
-        filter_outer = tk.Frame(self.root, bg='#34495e', relief='raised', bd=3)
-        filter_outer.pack(fill='x', padx=8, pady=(0, 8))
-
-        filter_frame = tk.Frame(filter_outer, bg='#d5dbdb', relief='ridge', bd=2)
-        filter_frame.pack(fill='x', padx=3, pady=3)
-
-        filter_container = tk.Frame(filter_frame, bg='#d5dbdb')
-        filter_container.pack(fill='x', padx=12, pady=8)
+        # Filter frame
+        filter_container = tk.Frame(search_frame, bg='#ecf0f1')
+        filter_container.pack(side='right', fill='y', pady=10, padx=(0, 10))
 
         # Brand filter
-        brand_section = tk.Frame(filter_container, bg='#d5dbdb')
-        brand_section.pack(side='left')
+        tk.Label(filter_container, text="Thương hiệu:", font=('Arial', 12, 'bold'),
+                 bg='#ecf0f1').pack(side='left', padx=(10, 5))
 
-        tk.Label(brand_section, text="THƯƠNG HIỆU:", font=('Arial', 11, 'bold'),
-                 bg='#d5dbdb', fg='#2c3e50').pack(side='left')
+        brand_var = tk.StringVar(value="Tất cả")
+        brand_combo = ttk.Combobox(filter_container, textvariable=brand_var, width=12, state='readonly')
+        brand_combo.pack(side='left', padx=5)
 
-        self.brand_var = tk.StringVar(value="Tất cả")
-        brand_options = tk.Frame(brand_section, bg='#d5dbdb')
-        brand_options.pack(side='left', padx=(10, 20))
+        # Price filter
+        tk.Label(filter_container, text="Giá:", font=('Arial', 12, 'bold'),
+                 bg='#ecf0f1').pack(side='left', padx=(10, 5))
 
-        for option in ["Tất cả", "Nike", "Adidas"]:
-            tk.Radiobutton(brand_options, text=option, variable=self.brand_var, value=option,
-                          bg='#d5dbdb', fg='#2c3e50', font=('Arial', 10),
-                          selectcolor='#3498db', activebackground='#d5dbdb',
-                          command=self.apply_filters, cursor='hand2').pack(side='left', padx=5)
+        price_var = tk.StringVar(value="Tất cả")
+        price_combo = ttk.Combobox(filter_container, textvariable=price_var, width=12, state='readonly',
+                                  values=["Tất cả", "Dưới 500k", "500k - 1tr", "1tr - 2tr", "Trên 2tr"])
+        price_combo.pack(side='left', padx=5)
 
-        # Price sort
-        price_section = tk.Frame(filter_container, bg='#d5dbdb')
-        price_section.pack(side='left')
+        btn_filter = tk.Button(filter_container, text="Lọc",
+                              bg='#27ae60', fg='white', font=('Arial', 12, 'bold'), padx=10)
+        btn_filter.pack(side='left', padx=5)
 
-        tk.Label(price_section, text="SẮP XẾP GIÁ:", font=('Arial', 11, 'bold'),
-                 bg='#d5dbdb', fg='#2c3e50').pack(side='left')
-
-        self.price_sort_var = tk.StringVar(value="Mặc định")
-        price_options = tk.Frame(price_section, bg='#d5dbdb')
-        price_options.pack(side='left', padx=10)
-
-        for option in ["Mặc định", "Giá thấp → cao", "Giá cao → thấp"]:
-            tk.Radiobutton(price_options, text=option, variable=self.price_sort_var, value=option,
-                          bg='#d5dbdb', fg='#2c3e50', font=('Arial', 10),
-                          selectcolor='#e74c3c', activebackground='#d5dbdb',
-                          command=self.apply_filters, cursor='hand2').pack(side='left', padx=5)
-
-        # Main content frame - Giảm padding top để chừa chỗ cho search/filter
-        main_frame = tk.Frame(self.root)
-        main_frame.pack(fill='both', expand=True, padx=8, pady=(0, 8))
-
-        # Left panel: Product list - Giảm kích thước hơn nữa
-        left_panel = tk.Frame(main_frame, width=380)  # Giảm từ 420 xuống 380
-        left_panel.pack(side='left', fill='y', padx=(0, 8))
-        left_panel.pack_propagate(False)
-
-        tk.Label(left_panel, text="Danh sách giày", font=('Arial', 15, 'bold'), fg='#2c3e50').pack(anchor='w', pady=(0, 5))
-
-        # Result count label
-        self.result_label = tk.Label(left_panel, text="", font=('Arial', 9), fg='#7f8c8d')
-        self.result_label.pack(anchor='w', pady=(0, 5))
-
-        tree_frame = tk.Frame(left_panel)
-        tree_frame.pack(fill='both', expand=True)
-
-        # TreeView với nút Add to Cart
-        style = ttk.Style()
-        style.configure("Treeview", rowheight=40)  # Tăng height để chứa button
-
-        self.tree = ttk.Treeview(tree_frame, columns=("Tên", "Giá", "Thương hiệu", "Action"),
-                                show="headings", height=10)  # Giảm height
-        self.tree.heading("Tên", text="Tên giày")
-        self.tree.heading("Giá", text="Giá")
-        self.tree.heading("Thương hiệu", text="Thương hiệu")
-        self.tree.heading("Action", text="")
-
-        self.tree.column("Tên", width=160)  # Giảm width
-        self.tree.column("Giá", width=90, anchor='e')
-        self.tree.column("Thương hiệu", width=80, anchor='center')
-        self.tree.column("Action", width=40, anchor='center')
-
-        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-
-        self.tree.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-        # Right panel: Product details - Giảm kích thước
-        detail_frame = tk.Frame(main_frame, bg='#f8f9fa')
-        detail_frame.pack(side='right', fill='both', expand=True)
-
-        # Product name
-        self.product_name_label = tk.Label(detail_frame, text="Chọn sản phẩm để xem chi tiết",
-                                      font=('Arial', 16, 'bold'), bg='#f8f9fa', fg='#2c3e50')
-        self.product_name_label.pack(pady=(10, 8))
-
-        # Main image - Giảm height
-        self.main_image_frame = tk.Frame(detail_frame, bg='white', relief='solid', bd=1, height=280)
-        self.main_image_frame.pack(fill='x', padx=12, pady=(0, 8))
-        self.main_image_frame.pack_propagate(False)
-
-        self.main_image_label = tk.Label(self.main_image_frame, text="Hình ảnh sản phẩm",
-                                   font=('Arial', 12), bg='white', fg='#6c757d')
-        self.main_image_label.pack(expand=True)
-
-        # Thumbnail gallery - Giảm height
-        gallery_section = tk.Frame(detail_frame, bg='#f8f9fa')
-        gallery_section.pack(fill='x', padx=12, pady=(0, 8))
-
-        tk.Label(gallery_section, text="Các ảnh khác:", font=('Arial', 11, 'bold'),
-                 bg='#f9f9fa').pack(anchor='w', pady=(0, 3))
-
-        thumbnail_frame = tk.Frame(gallery_section, bg='white', height=60, relief='solid', bd=1)
-        thumbnail_frame.pack(fill='x')
-        thumbnail_frame.pack_propagate(False)
-
-        self.thumbnail_canvas = tk.Canvas(thumbnail_frame, bg='white', height=58)
-        self.thumbnail_scrollbar = ttk.Scrollbar(thumbnail_frame, orient='horizontal', command=self.thumbnail_canvas.xview)
-        self.thumbnail_scrollable = tk.Frame(self.thumbnail_canvas, bg='white')
-
-        self.thumbnail_scrollable.bind("<Configure>",
-                                 lambda e: self.thumbnail_canvas.configure(scrollregion=self.thumbnail_canvas.bbox("all")))
-        self.thumbnail_canvas.create_window((0, 0), window=self.thumbnail_scrollable, anchor="nw")
-        self.thumbnail_canvas.configure(xscrollcommand=self.thumbnail_scrollbar.set)
-
-        self.thumbnail_canvas.pack(side='top', fill='both', expand=True)
-        self.thumbnail_scrollbar.pack(side='bottom', fill='x')
-
-        # Description - Giảm height
-        desc_section = tk.Frame(detail_frame, bg='#f8f9fa')
-        desc_section.pack(fill='both', expand=True, padx=12, pady=(0, 10))
-
-        tk.Label(desc_section, text="Mô tả sản phẩm:", font=('Arial', 11, 'bold'),
-                 bg='#f9f9fa').pack(anchor='w', pady=(0, 3))
-
-        self.desc_text = tk.Text(desc_section, height=4, wrap='word', font=('Arial', 10),  # Giảm height
-                           state='disabled', bg='white', relief='solid', bd=1)
-        self.desc_text.pack(fill='both', expand=True)
-
-        # Add to cart section cho sản phẩm được chọn
-        cart_section = tk.Frame(detail_frame, bg='#f8f9fa')
-        cart_section.pack(fill='x', padx=12, pady=(0, 10))
-
-        self.add_to_cart_btn = tk.Button(cart_section, text="🛒 THÊM VÀO GIỎ HÀNG",
-                                        command=self.add_selected_to_cart,
-                                        bg='#27ae60', fg='white', font=('Arial', 12, 'bold'),
-                                        relief='flat', padx=20, pady=8, cursor='hand2',
-                                        state='disabled')
-        self.add_to_cart_btn.pack(pady=5)
-
-        self.selected_product_id = None
-
-        # Populate treeview
-        self.populate_product_list()
-
-        # Bind events
-        self.tree.bind("<<TreeviewSelect>>", self.on_product_select)
-        self.tree.bind("<Button-1>", self.on_tree_click)  # Handle add to cart clicks
-        self.search_entry.bind('<Return>', lambda e: self.apply_filters())
-
-        # Mouse wheel scroll
-        def on_mousewheel(event):
-            self.thumbnail_canvas.xview_scroll(int(-1*(event.delta/120)), "units")
-        self.thumbnail_canvas.bind("<MouseWheel>", on_mousewheel)
-
-    def load_product_data(self):
-        """Load dữ liệu sản phẩm và ảnh với thông tin thương hiệu"""
+        # Load product data and images
+        all_products = []
+        product_images = {}
+        conn = None
+        cursor = None
         try:
-            # Load product data và images với thông tin thương hiệu
-            product_rows = []
-            product_images = {}  # Dictionary để lưu tất cả ảnh của mỗi sản phẩm
-            conn = None
-            cursor = None
-
-            # Import mysql connector để kết nối database trực tiếp như file gốc
-            import mysql.connector
-
-            conn = mysql.connector.connect(
-                host="127.0.0.1",
-                user="root",
-                password="tungds270105",
-                database="shopgiaydep"
-            )
+            conn = get_db_connection()
             cursor = conn.cursor()
 
-            # Sửa lại tên cột từ MaThuongHieu thành MaTH
+            # Get product info with brand
             cursor.execute("""
-                SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, th.TenTH
-                FROM sanpham sp 
+                SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, th.TenTH, sp.SoLuong
+                FROM sanpham sp
                 LEFT JOIN thuonghieu th ON sp.MaTH = th.MaTH
                 ORDER BY sp.TenSP
             """)
-            product_rows = cursor.fetchall()
+            all_products = cursor.fetchall()
 
-            # Lấy tất cả ảnh của từng sản phẩm - giống file gốc
+            # Get brand list for combobox
+            cursor.execute("SELECT DISTINCT TenTH FROM thuonghieu ORDER BY TenTH")
+            brands = ["Tất cả"] + [row[0] for row in cursor.fetchall()]
+            brand_combo['values'] = brands
+
+            # Get all images for each product
             cursor.execute("""
                 SELECT MaSP, URLAnh
                 FROM url_sp
@@ -292,153 +228,419 @@ class ProductView(BaseView):
             """)
             image_rows = cursor.fetchall()
 
-            # Tổ chức ảnh theo sản phẩm - giống file gốc
+            # Organize images by product
             for ma_sp, url_anh in image_rows:
                 if ma_sp not in product_images:
                     product_images[ma_sp] = []
                 product_images[ma_sp].append(url_anh)
 
-            # Tạo product_data với thông tin thương hiệu
-            for ma_sp, ten_sp, gia, mo_ta, ten_thuong_hieu in product_rows:
-                price_display = f"{float(gia):,.0f} VNĐ" if gia is not None else "N/A"
-                brand_display = ten_thuong_hieu or "Khác"
-
-                self.product_data[ma_sp] = {
-                    "name": ten_sp,
-                    "price": price_display,
-                    "price_value": float(gia) if gia is not None else 0,  # Để sort
-                    "brand": brand_display,
-                    "description": (mo_ta or "Chưa có mô tả cho sản phẩm này.").strip(),
-                    "images": product_images.get(ma_sp, [])
-                }
-
-            # Store original data for filtering
-            self.original_product_data = self.product_data.copy()
-
         except Exception as e:
             messagebox.showerror("Lỗi", f"Không thể tải dữ liệu: {str(e)}")
-            print(f"Chi tiết lỗi: {e}")  # Debug log
+            return
         finally:
             if cursor:
                 cursor.close()
             if conn:
                 conn.close()
 
-    def populate_product_list(self):
-        """Điền dữ liệu vào treeview với thông tin thương hiệu và nút thêm giỏ hàng"""
-        # Clear existing items
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        main_frame = tk.Frame(self.root)
+        main_frame.pack(fill='both', expand=True, padx=10, pady=5)
 
-        # Add filtered/sorted products với nút "+"
-        for ma_sp, data in self.product_data.items():
-            self.tree.insert("", "end", iid=ma_sp, values=(data["name"], data["price"], data["brand"], "➕"))
+        # Left panel: Product list
+        list_frame = tk.Frame(main_frame, width=400)
+        list_frame.pack(side='left', fill='y', padx=(0, 10))
+        list_frame.pack_propagate(False)
 
-        # Update result count
-        total_products = len(self.product_data)
-        if hasattr(self, 'result_label'):
-            if total_products == len(self.original_product_data):
-                self.result_label.config(text=f"Hiển thị tất cả {total_products} sản phẩm")
-            else:
-                self.result_label.config(text=f"Tìm thấy {total_products} sản phẩm")
+        tk.Label(list_frame, text="Danh sách giày", font=('Arial', 18, 'bold')).pack(anchor='w', pady=(0, 10))
 
-    def on_product_select(self, event):
-        """Handle khi chọn sản phẩm - giống file gốc"""
-        selection = self.tree.selection()
-        if not selection:
-            return
+        tree_frame = tk.Frame(list_frame)
+        tree_frame.pack(fill='both', expand=True)
 
-        ma_sp = selection[0]
-        if ma_sp not in self.product_data:
-            return
-
-        product = self.product_data[ma_sp]
-
-        # Update product name
-        self.product_name_label.config(text=product["name"])
-
-        # Update description
-        self.desc_text.config(state='normal')
-        self.desc_text.delete(1.0, tk.END)
-        self.desc_text.insert(1.0, product["description"])
-        self.desc_text.config(state='disabled')
-
-        # Update images
-        images = product["images"]
-        if images:
-            self.show_main_image(images[0])  # Show first image as main
-            self.update_thumbnail_gallery(images)
+        # Add quantity column for sellers
+        if role == "seller":
+            tree = ttk.Treeview(tree_frame, columns=("Tên", "Giá", "SL"), show="headings", height=12)
+            tree.heading("Tên", text="Tên giày")
+            tree.heading("Giá", text="Giá")
+            tree.heading("SL", text="SL")
+            tree.column("Tên", width=200)
+            tree.column("Giá", width=100, anchor='e')
+            tree.column("SL", width=50, anchor='e')
         else:
-            self.show_main_image(None)
-            self.update_thumbnail_gallery([])
+            tree = ttk.Treeview(tree_frame, columns=("Tên", "Giá"), show="headings", height=12)
+            tree.heading("Tên", text="Tên giày")
+            tree.heading("Giá", text="Giá")
+            tree.column("Tên", width=250)
+            tree.column("Giá", width=130, anchor='e')
 
-        # Enable "Add to Cart" button
-        self.add_to_cart_btn.config(state='normal')
-        self.selected_product_id = ma_sp  # Save selected product ID
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
 
-    def show_main_image(self, image_url):
-        """Hiển thị ảnh chính - giống file gốc"""
-        try:
-            # Clear current image
-            for widget in self.main_image_frame.winfo_children():
+        tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Action button frame
+        action_button_frame = tk.Frame(list_frame)
+        action_button_frame.pack(fill='x', pady=(5, 0))
+
+        if role == "buyer":
+            # Add to cart button for buyers
+            btn_add_to_cart = tk.Button(action_button_frame, text="➕ Thêm vào giỏ hàng",
+                                       bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'),
+                                       padx=10, pady=8, relief='raised', state='disabled',
+                                       cursor='hand2', bd=2)
+            btn_add_to_cart.pack(anchor='w', pady=5)
+
+            status_label = tk.Label(action_button_frame, text="Chọn sản phẩm để kích hoạt nút",
+                                   font=('Arial', 10), fg='#7f8c8d')
+            status_label.pack(anchor='w')
+        else:
+            # Delete product button for sellers
+            btn_delete_product = tk.Button(action_button_frame, text="🗑️ Xóa sản phẩm",
+                                          bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
+                                          padx=10, pady=8, relief='raised', state='disabled',
+                                          cursor='hand2', bd=2)
+            btn_delete_product.pack(anchor='w', pady=5)
+
+            status_label = tk.Label(action_button_frame, text="Chọn sản phẩm để xóa",
+                                   font=('Arial', 10), fg='#7f8c8d')
+            status_label.pack(anchor='w')
+
+        # Functions
+        def add_to_cart(ma_sp, ten_sp):
+            if role != "buyer":
+                return
+
+            print(f"Debug: Adding {ten_sp} to cart")
+
+            # Save to database instead of just memory
+            conn = None
+            cursor = None
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+
+                # Get MaKH from username
+                cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
+                result = cursor.fetchone()
+                if not result:
+                    messagebox.showerror("Lỗi", "Không tìm thấy thông tin khách hàng!")
+                    return
+
+                ma_kh = result[0]
+
+                # Check and create cart if not exists
+                cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+                gh_result = cursor.fetchone()
+
+                if not gh_result:
+                    # Create new cart ID
+                    cursor.execute("SELECT MAX(CAST(SUBSTRING(MaGH, 3) AS UNSIGNED)) FROM giohang")
+                    max_result = cursor.fetchone()
+                    next_id = (max_result[0] + 1) if max_result[0] else 1
+                    ma_gh = f"GH{next_id:03d}"
+
+                    cursor.execute("INSERT INTO giohang (MaGH, MaKH) VALUES (%s, %s)", (ma_gh, ma_kh))
+                else:
+                    ma_gh = gh_result[0]
+
+                # Check if product already in cart (with default color and size)
+                cursor.execute("""
+                    SELECT SoLuong FROM giohangchuasanpham 
+                    WHERE MaGH = %s AND MaSP = %s AND MauSac = 'Đen' AND Size = '42'
+                """, (ma_gh, ma_sp))
+
+                existing = cursor.fetchone()
+
+                if existing:
+                    # Increase quantity
+                    new_quantity = existing[0] + 1
+                    cursor.execute("""
+                        UPDATE giohangchuasanpham 
+                        SET SoLuong = %s 
+                        WHERE MaGH = %s AND MaSP = %s AND MauSac = 'Đen' AND Size = '42'
+                    """, (new_quantity, ma_gh, ma_sp))
+                else:
+                    # Add new product with default color and size
+                    cursor.execute("""
+                        INSERT INTO giohangchuasanpham (MaGH, MaSP, MauSac, Size, SoLuong)
+                        VALUES (%s, %s, 'Đen', '42', 1)
+                    """, (ma_gh, ma_sp))
+
+                conn.commit()
+
+                # Update memory cart to sync with UI (temporary)
+                if ma_sp in self.cart:
+                    self.cart[ma_sp] += 1
+                else:
+                    self.cart[ma_sp] = 1
+
+                # Update cart button
+                btn_cart.config(text=update_cart_button())
+                messagebox.showinfo("Thành công", f"Đã thêm {ten_sp} vào giỏ hàng!")
+
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể thêm sản phẩm vào giỏ hàng: {str(e)}")
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+
+        def delete_product(ma_sp, ten_sp):
+            if role != "seller":
+                return
+
+            result = messagebox.askyesno("Xác nhận", f"Bạn có chắc chắn muốn xóa sản phẩm '{ten_sp}' không?")
+            if not result:
+                return
+
+            conn = None
+            cursor = None
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+
+                # Delete product images first
+                cursor.execute("DELETE FROM url_sp WHERE MaSP = %s", (ma_sp,))
+
+                # Delete product
+                cursor.execute("DELETE FROM sanpham WHERE MaSP = %s", (ma_sp,))
+
+                conn.commit()
+                messagebox.showinfo("Thành công", f"Đã xóa sản phẩm '{ten_sp}' thành công!")
+
+                # Refresh the product list
+                self.show_shoes(role, username)
+
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể xóa sản phẩm: {str(e)}")
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+
+        # Filter products function
+        def filter_products():
+            # Clear current items
+            for item in tree.get_children():
+                tree.delete(item)
+
+            search_text = search_var.get().lower().strip()
+            selected_brand = brand_var.get()
+            selected_price = price_var.get()
+
+            filtered_products = []
+
+            for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong in all_products:
+                # Filter by search text
+                if search_text and search_text not in ten_sp.lower():
+                    continue
+
+                # Filter by brand
+                if selected_brand != "Tất cả" and ten_th != selected_brand:
+                    continue
+
+                # Filter by price
+                if selected_price != "Tất cả" and gia:
+                    price_val = float(gia)
+                    if selected_price == "Dưới 500k" and price_val >= 500000:
+                        continue
+                    elif selected_price == "500k - 1tr" and (price_val < 500000 or price_val >= 1000000):
+                        continue
+                    elif selected_price == "1tr - 2tr" and (price_val < 1000000 or price_val >= 2000000):
+                        continue
+                    elif selected_price == "Trên 2tr" and price_val < 2000000:
+                        continue
+
+                filtered_products.append((ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong))
+
+            # Populate treeview
+            product_data.clear()
+            for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong in filtered_products:
+                price_display = f"{float(gia):,.0f} VNĐ" if gia is not None else "N/A"
+                if role == "seller":
+                    tree.insert("", "end", iid=ma_sp, values=(ten_sp, price_display, so_luong))
+                else:
+                    tree.insert("", "end", iid=ma_sp, values=(ten_sp, price_display))
+                product_data[ma_sp] = {
+                    "name": ten_sp,
+                    "price": price_display,
+                    "description": (mo_ta or "Chưa có mô tả cho sản phẩm này.").strip(),
+                    "images": product_images.get(ma_sp, []),
+                    "quantity": so_luong
+                }
+
+        # Bind filter events
+        btn_search.config(command=filter_products)
+        btn_filter.config(command=filter_products)
+        search_entry.bind('<Return>', lambda e: filter_products())
+
+        # Populate initial data
+        product_data = {}
+        filter_products()  # This will populate the tree
+
+        # Handle product selection and enable action button
+        selected_product_id = None
+
+        def on_product_select_combined(event):
+            nonlocal selected_product_id
+            selection = tree.selection()
+
+            if selection:
+                selected_product_id = selection[0]
+
+                if selected_product_id in product_data:
+                    if role == "buyer":
+                        # Enable add to cart button
+                        btn_add_to_cart.config(state='normal', bg='#27ae60')
+                        status_label.config(text="Nút đã được kích hoạt - Click để thêm vào giỏ!", fg='green')
+                        btn_add_to_cart.config(command=lambda: add_to_cart(selected_product_id, product_data[selected_product_id]["name"]))
+                    else:
+                        # Enable delete product button
+                        btn_delete_product.config(state='normal', bg='#e74c3c')
+                        status_label.config(text="Click để xóa sản phẩm đã chọn", fg='red')
+                        btn_delete_product.config(command=lambda: delete_product(selected_product_id, product_data[selected_product_id]["name"]))
+
+                    # Update product details on the right panel
+                    product = product_data[selected_product_id]
+
+                    # Update product name
+                    if role == "seller":
+                        product_name_label.config(text=f"{product['name']} (SL: {product['quantity']})")
+                    else:
+                        product_name_label.config(text=product["name"])
+
+                    # Update description
+                    desc_text.config(state='normal')
+                    desc_text.delete(1.0, tk.END)
+                    desc_text.insert(1.0, product["description"])
+                    desc_text.config(state='disabled')
+
+                    # Update images
+                    images = product["images"]
+                    if images:
+                        show_main_image(images[0])  # Show first image as main
+                        update_thumbnail_gallery(images)
+                    else:
+                        show_main_image(None)
+                        update_thumbnail_gallery([])
+            else:
+                selected_product_id = None
+                if role == "buyer":
+                    btn_add_to_cart.config(state='disabled', bg='#95a5a6')
+                    status_label.config(text="Click sản phẩm để thêm vào giỏ hàng", fg='#7f8c8d')
+                else:
+                    btn_delete_product.config(state='disabled', bg='#95a5a6')
+                    status_label.config(text="Chọn sản phẩm để xóa", fg='#7f8c8d')
+
+        # ONLY bind this event - remove any other bindings
+        tree.bind("<<TreeviewSelect>>", on_product_select_combined)
+
+        # Right panel: Product details and image gallery
+        detail_frame = tk.Frame(main_frame, bg='#f8f9fa')
+        detail_frame.pack(side='right', fill='both', expand=True)
+
+        # Product name
+        product_name_label = tk.Label(detail_frame, text="Chọn sản phẩm để xem chi tiết",
+                                      font=('Arial', 18, 'bold'), bg='#f8f9fa', fg='#2c3e50')
+        product_name_label.pack(pady=(15, 10))
+
+        # Main image display area
+        main_image_frame = tk.Frame(detail_frame, bg='white', relief='solid', bd=1, height=300)
+        main_image_frame.pack(fill='x', padx=15, pady=(0, 10))
+        main_image_frame.pack_propagate(False)
+
+        main_image_label = tk.Label(main_image_frame, text="Hình ảnh sản phẩm",
+                                   font=('Arial', 14), bg='white', fg='#6c757d')
+        main_image_label.pack(expand=True)
+
+        # Thumbnail gallery section
+        gallery_section = tk.Frame(detail_frame, bg='#f8f9fa')
+        gallery_section.pack(fill='x', padx=15, pady=(0, 10))
+
+        tk.Label(gallery_section, text="Các ảnh khác:", font=('Arial', 12, 'bold'),
+                 bg='#f9f9fa').pack(anchor='w', pady=(0, 5))
+
+        # Scrollable thumbnail container
+        thumbnail_frame = tk.Frame(gallery_section, bg='white', height=80, relief='solid', bd=1)
+        thumbnail_frame.pack(fill='x')
+        thumbnail_frame.pack_propagate(False)
+
+        # Canvas for scrolling thumbnails
+        thumbnail_canvas = tk.Canvas(thumbnail_frame, bg='white', height=78)
+        thumbnail_scrollbar = ttk.Scrollbar(thumbnail_frame, orient='horizontal', command=thumbnail_canvas.xview)
+        thumbnail_scrollable = tk.Frame(thumbnail_canvas, bg='white')
+
+        thumbnail_scrollable.bind("<Configure>",
+                                 lambda e: thumbnail_canvas.configure(scrollregion=thumbnail_canvas.bbox("all")))
+        thumbnail_canvas.create_window((0, 0), window=thumbnail_scrollable, anchor="nw")
+        thumbnail_canvas.configure(xscrollcommand=thumbnail_scrollbar.set)
+
+        thumbnail_canvas.pack(side='top', fill='both', expand=True)
+        thumbnail_scrollbar.pack(side='bottom', fill='x')
+
+        # Description area
+        desc_section = tk.Frame(detail_frame, bg='#f8f9fa')
+        desc_section.pack(fill='both', expand=True, padx=15, pady=(0, 15))
+
+        tk.Label(desc_section, text="Mô tả sản phẩm:", font=('Arial', 12, 'bold'),
+                 bg='#f9f9fa').pack(anchor='w', pady=(0, 5))
+
+        desc_text = tk.Text(desc_section, height=5, wrap='word', font=('Arial', 11),
+                           state='disabled', bg='white', relief='solid', bd=1)
+        desc_text.pack(fill='both', expand=True)
+
+        # Functions for handling images
+        def show_main_image(image_url):
+            """Display main image"""
+            try:
+                # Clear current image
+                for widget in main_image_frame.winfo_children():
+                    widget.destroy()
+
+                if image_url:
+                    img = load_image_safely(image_url)
+                    if img:
+                        # Resize to fit main display area
+                        main_image_label_new = tk.Label(main_image_frame, image=img, bg='white')
+                        main_image_label_new.image = img  # Keep reference
+                        main_image_label_new.pack(expand=True)
+                    else:
+                        tk.Label(main_image_frame, text="❌ Không thể tải hình ảnh",
+                               font=('Arial', 14), bg='white', fg='#e74c3c').pack(expand=True)
+                else:
+                    tk.Label(main_image_frame, text="Không có hình ảnh",
+                           font=('Arial', 14), bg='white', fg='#6c757d').pack(expand=True)
+            except Exception as e:
+                tk.Label(main_image_frame, text="Lỗi tải hình ảnh",
+                       font=('Arial', 14), bg='white', fg='#e74c3c').pack(expand=True)
+
+        def update_thumbnail_gallery(images):
+            """Update thumbnail gallery"""
+            # Clear current thumbnails
+            for widget in thumbnail_scrollable.winfo_children():
                 widget.destroy()
 
-            if image_url:
-                img = load_image_safely(image_url)
-                if img:
-                    # Resize để fit main display area
-                    main_image_label = tk.Label(self.main_image_frame, image=img, bg='white')
-                    main_image_label.image = img  # Keep reference
-                    main_image_label.pack(expand=True)
-                    # Store reference in the class to prevent garbage collection
-                    self.current_main_image = img
-                else:
-                    tk.Label(self.main_image_frame, text="❌ Không thể tải hình ảnh",
-                           font=('Arial', 14), bg='white', fg='#e74c3c').pack(expand=True)
-                    print(f"Không thể tải ảnh từ: {image_url}")  # Debug log
-            else:
-                tk.Label(self.main_image_frame, text="Không có hình ảnh",
-                       font=('Arial', 14), bg='white', fg='#6c757d').pack(expand=True)
-        except Exception as e:
-            print(f"Lỗi show_main_image: {e}")  # Debug log
-            tk.Label(self.main_image_frame, text="Lỗi tải hình ảnh",
-                   font=('Arial', 14), bg='white', fg='#e74c3c').pack(expand=True)
+            if not images:
+                tk.Label(thumbnail_scrollable, text="Không có ảnh khác",
+                       font=('Arial', 10), bg='white', fg='#6c757d').pack(side='left', padx=10, pady=20)
+                return
 
-    def update_thumbnail_gallery(self, images):
-        """Cập nhật gallery thumbnails - giống file gốc"""
-        # Clear current thumbnails
-        for widget in self.thumbnail_scrollable.winfo_children():
-            widget.destroy()
-
-        # Clear previous thumbnail references
-        self.thumbnail_images = []
-
-        if not images:
-            tk.Label(self.thumbnail_scrollable, text="Không có ảnh khác",
-                   font=('Arial', 10), bg='white', fg='#6c757d').pack(side='left', padx=10, pady=20)
-            return
-
-        for i, image_url in enumerate(images):
-            try:
-                # Load thumbnail image - giống file gốc
-                img = load_image_safely(image_url)
-                if img:
-                    # Resize to thumbnail size (70x70) - giống file gốc
+            for i, image_url in enumerate(images):
+                try:
+                    # Load thumbnail image
                     thumb_img = load_thumbnail_image(image_url)
-
                     if thumb_img:
-                        # Store reference to prevent garbage collection
-                        self.thumbnail_images.append(thumb_img)
-
-                        # Create thumbnail button - giống file gốc
-                        thumb_btn = tk.Button(self.thumbnail_scrollable, image=thumb_img,
-                                             command=lambda url=image_url: self.show_main_image(url),
+                        # Create thumbnail button
+                        thumb_btn = tk.Button(thumbnail_scrollable, image=thumb_img,
+                                             command=lambda url=image_url: show_main_image(url),
                                              relief='solid', bd=2, cursor='hand2',
                                              bg='white', activebackground='#e9ecef')
                         thumb_btn.image = thumb_img  # Keep reference
                         thumb_btn.pack(side='left', padx=3, pady=3)
 
-                        # Hover effects - giống file gốc
+                        # Hover effects
                         def on_enter(e, btn=thumb_btn):
                             btn.config(bd=3, bg='#dee2e6')
                         def on_leave(e, btn=thumb_btn):
@@ -446,264 +648,225 @@ class ProductView(BaseView):
 
                         thumb_btn.bind("<Enter>", on_enter)
                         thumb_btn.bind("<Leave>", on_leave)
+
                     else:
-                        # Fallback button nếu không load được thumbnail - giống file gốc
-                        thumb_btn = tk.Button(self.thumbnail_scrollable, text=f"Ảnh {i+1}",
-                                             command=lambda url=image_url: self.show_main_image(url),
+                        # Fallback button if can't load image
+                        thumb_btn = tk.Button(thumbnail_scrollable, text=f"Ảnh {i+1}",
+                                             command=lambda url=image_url: show_main_image(url),
                                              width=8, height=4, cursor='hand2',
                                              relief='solid', bd=2, bg='white')
                         thumb_btn.pack(side='left', padx=3, pady=3)
-                else:
-                    # Fallback button nếu không load được ảnh - giống file gốc
-                    thumb_btn = tk.Button(self.thumbnail_scrollable, text=f"Ảnh {i+1}",
-                                         command=lambda url=image_url: self.show_main_image(url),
+
+                except Exception as e:
+                    print(f"Error creating thumbnail {i+1}: {e}")
+                    # Create placeholder button
+                    thumb_btn = tk.Button(thumbnail_scrollable, text=f"Ảnh {i+1}",
+                                         command=lambda url=image_url: show_main_image(url),
                                          width=8, height=4, cursor='hand2',
                                          relief='solid', bd=2, bg='white')
                     thumb_btn.pack(side='left', padx=3, pady=3)
 
-            except Exception as e:
-                print(f"Lỗi tạo thumbnail {i+1}: {e}")
-                # Tạo placeholder button - giống file gốc
-                thumb_btn = tk.Button(self.thumbnail_scrollable, text=f"Ảnh {i+1}",
-                                     command=lambda url=image_url: self.show_main_image(url),
-                                     width=8, height=4, cursor='hand2',
-                                     relief='solid', bd=2, bg='white')
-                thumb_btn.pack(side='left', padx=3, pady=3)
+        # Mouse wheel scroll for thumbnail canvas
+        def on_mousewheel(event):
+            thumbnail_canvas.xview_scroll(int(-1*(event.delta/120)), "units")
 
-    def apply_filters(self):
-        """Áp dụng tìm kiếm và bộ lọc"""
-        # Get filter criteria
-        search_text = self.search_var.get().strip().lower()
-        selected_brand = self.brand_var.get()
-        price_sort = self.price_sort_var.get()
+        thumbnail_canvas.bind("<MouseWheel>", on_mousewheel)
 
-        # Start with original data
-        filtered_data = {}
+    def show_add_product_form(self, role, username):
+        """Show add product form - from main.py"""
+        # Create add product window
+        add_window = tk.Toplevel(self.root)
+        add_window.title("Thêm sản phẩm mới")
+        add_window.geometry("500x600")
+        add_window.resizable(False, False)
+        add_window.grab_set()  # Make window modal
 
-        for ma_sp, product in self.original_product_data.items():
-            # Apply search filter
-            if search_text:
-                if (search_text not in product["name"].lower() and
-                    search_text not in product["description"].lower() and
-                    search_text not in product["brand"].lower()):
-                    continue
+        # Center the window
+        add_window.transient(self.root)
+        add_window.focus()
 
-            # Apply brand filter
-            if selected_brand != "Tất cả":
-                if product["brand"] != selected_brand:
-                    continue
+        # Form fields
+        tk.Label(add_window, text="THÊM SẢN PHẨM MỚI", font=('Arial', 16, 'bold'), fg='#2c3e50').pack(pady=20)
 
-            # Product passes all filters
-            filtered_data[ma_sp] = product
+        # Product name
+        tk.Label(add_window, text="Tên sản phẩm:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
+        entry_name = tk.Entry(add_window, font=('Arial', 12), width=40)
+        entry_name.pack(padx=20, pady=(0, 10))
 
-        # Apply sorting
-        if price_sort == "Giá thấp → cao":
-            # Sort by price ascending
-            sorted_items = sorted(filtered_data.items(), key=lambda x: x[1]["price_value"])
-            filtered_data = dict(sorted_items)
-        elif price_sort == "Giá cao → thấp":
-            # Sort by price descending
-            sorted_items = sorted(filtered_data.items(), key=lambda x: x[1]["price_value"], reverse=True)
-            filtered_data = dict(sorted_items)
-        # "Mặc định" keeps original order
+        # Price
+        tk.Label(add_window, text="Giá (VNĐ):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
+        entry_price = tk.Entry(add_window, font=('Arial', 12), width=40)
+        entry_price.pack(padx=20, pady=(0, 10))
 
-        # Update displayed data
-        self.product_data = filtered_data
-        self.populate_product_list()
+        # Brand
+        tk.Label(add_window, text="Thương hiệu:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
+        brand_var_add = tk.StringVar()
+        brand_combo_add = ttk.Combobox(add_window, textvariable=brand_var_add, font=('Arial', 12), width=37, state='readonly')
 
-        # Update status
-        total_products = len(filtered_data)
-        print(f"Hiển thị {total_products} sản phẩm sau khi lọc")
-
-    def clear_search(self):
-        """Xóa tìm kiếm và reset filters"""
-        self.search_var.set("")
-        self.brand_var.set("Tất cả")
-        self.price_sort_var.set("Mặc định")
-
-        # Reset to original data
-        self.product_data = self.original_product_data.copy()
-        self.populate_product_list()
-
-        # Clear product detail panel
-        self.product_name_label.config(text="Chọn sản phẩm để xem chi tiết")
-        for widget in self.main_image_frame.winfo_children():
-            widget.destroy()
-        tk.Label(self.main_image_frame, text="Hình ảnh sản phẩm",
-                 font=('Arial', 14), bg='white', fg='#6c757d').pack(expand=True)
-
-        for widget in self.thumbnail_scrollable.winfo_children():
-            widget.destroy()
-
-        self.desc_text.config(state='normal')
-        self.desc_text.delete(1.0, tk.END)
-        self.desc_text.config(state='disabled')
-
-    def load_cart_count(self):
-        """Load số lượng sản phẩm trong giỏ hàng"""
+        # Load brands
         try:
-            import mysql.connector
-            conn = mysql.connector.connect(
-                host="127.0.0.1",
-                user="root",
-                password="tungds270105",
-                database="shopgiaydep"
-            )
+            conn = get_db_connection()
             cursor = conn.cursor()
-
-            # Sửa lại tên cột từ TenDangNhap thành TenDN
-            cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (self.username,))
-            result = cursor.fetchone()
-
-            if result:
-                ma_kh = result[0]
-                # Lấy MaGH từ MaKH
-                cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
-                gh_result = cursor.fetchone()
-
-                if gh_result:
-                    ma_gh = gh_result[0]
-                    # Đếm số sản phẩm trong giỏ hàng
-                    cursor.execute("SELECT SUM(SoLuong) FROM giohangchuasanpham WHERE MaGH = %s", (ma_gh,))
-                    count_result = cursor.fetchone()
-                    self.cart_count = count_result[0] if count_result[0] else 0
-                else:
-                    self.cart_count = 0
-            else:
-                self.cart_count = 0
-
-            # Update cart button text
-            if hasattr(self, 'cart_btn'):
-                self.cart_btn.config(text=f"🛒 Giỏ hàng ({self.cart_count})")
-
+            cursor.execute("SELECT MaTH, TenTH FROM thuonghieu ORDER BY TenTH")
+            brands_data = cursor.fetchall()
+            brand_combo_add['values'] = [f"{th[1]} ({th[0]})" for th in brands_data]
         except Exception as e:
-            print(f"Lỗi load cart count: {e}")
-            self.cart_count = 0
+            messagebox.showerror("Lỗi", f"Không thể tải danh sách thương hiệu: {str(e)}")
         finally:
-            if 'cursor' in locals():
+            if cursor:
                 cursor.close()
-            if 'conn' in locals():
+            if conn:
                 conn.close()
 
-    def on_tree_click(self, event):
-        """Handle click trên treeview - bao gồm add to cart"""
-        region = self.tree.identify("region", event.x, event.y)
-        if region == "cell":
-            column = self.tree.identify_column(event.x, event.y)
-            if column == "#4":  # Action column
-                item = self.tree.identify_row(event.y)
-                if item:
-                    self.add_to_cart(item)
+        brand_combo_add.pack(padx=20, pady=(0, 10))
 
-    def add_to_cart(self, product_id):
-        """Thêm sản phẩm vào giỏ hàng từ danh sách"""
-        try:
-            import mysql.connector
-            conn = mysql.connector.connect(
-                host="127.0.0.1",
-                user="root",
-                password="tungds270105",
-                database="shopgiaydep"
-            )
-            cursor = conn.cursor()
+        # Quantity
+        tk.Label(add_window, text="Số lượng:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
+        entry_quantity = tk.Entry(add_window, font=('Arial', 12), width=40)
+        entry_quantity.pack(padx=20, pady=(0, 10))
 
-            # Lấy MaKH từ username
-            cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (self.username,))
-            result = cursor.fetchone()
+        # Description
+        tk.Label(add_window, text="Mô tả:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
+        text_description = tk.Text(add_window, font=('Arial', 11), width=42, height=6, wrap='word')
+        text_description.pack(padx=20, pady=(0, 10))
 
-            if not result:
-                messagebox.showerror("Lỗi", "Không tìm thấy thông tin khách hàng!")
+        # Image URLs
+        tk.Label(add_window, text="URL hình ảnh (mỗi URL một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=20, pady=(10, 5))
+        text_images = tk.Text(add_window, font=('Arial', 11), width=42, height=4, wrap='word')
+        text_images.pack(padx=20, pady=(0, 20))
+
+        # Buttons
+        button_frame = tk.Frame(add_window)
+        button_frame.pack(pady=10)
+
+        def save_product():
+            # Get form data
+            name = entry_name.get().strip()
+            price_str = entry_price.get().strip()
+            brand_selection = brand_var_add.get()
+            quantity_str = entry_quantity.get().strip()
+            description = text_description.get(1.0, tk.END).strip()
+            image_urls = text_images.get(1.0, tk.END).strip()
+
+            # Validation
+            if not all([name, price_str, brand_selection, quantity_str]):
+                messagebox.showerror("Lỗi", "Vui lòng nhập đầy đủ thông tin bắt buộc!")
                 return
 
-            ma_kh = result[0]
+            try:
+                price = float(price_str)
+                if price <= 0:
+                    raise ValueError("Giá phải lớn hơn 0")
+                quantity = int(quantity_str)
+                if quantity < 0:
+                    raise ValueError("Số lượng phải >= 0")
+            except ValueError as e:
+                messagebox.showerror("Lỗi", f"Dữ liệu không hợp lệ: {str(e)}")
+                return
 
-            # Lấy hoặc tạo giỏ hàng
-            cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
-            gh_result = cursor.fetchone()
+            # Extract brand ID
+            try:
+                brand_id = brand_selection.split('(')[1].replace(')', '')
+            except:
+                messagebox.showerror("Lỗi", "Vui lòng chọn thương hiệu!")
+                return
 
-            if not gh_result:
-                # Tạo giỏ hàng mới
-                cursor.execute("SELECT MAX(CAST(SUBSTRING(MaGH, 3) AS UNSIGNED)) FROM giohang")
-                max_id = cursor.fetchone()[0]
-                new_id = 1 if not max_id else max_id + 1
-                ma_gh = f"GH{new_id:03d}"
+            # Generate product ID
+            conn = None
+            cursor = None
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
 
-                cursor.execute("INSERT INTO giohang (MaGH, MaKH) VALUES (%s, %s)", (ma_gh, ma_kh))
-            else:
-                ma_gh = gh_result[0]
+                # Generate new product ID
+                cursor.execute("SELECT MAX(CAST(SUBSTRING(MaSP, 3) AS UNSIGNED)) FROM sanpham WHERE MaSP LIKE 'SP%'")
+                result = cursor.fetchone()
+                next_number = ((result[0] or 0) + 1) if result and result[0] is not None else 1
+                product_id = f"SP{next_number:03d}"
 
-            # Kiểm tra sản phẩm đã có trong giỏ hàng chưa (với size và màu mặc định)
-            cursor.execute("""
-                SELECT SoLuong FROM giohangchuasanpham 
-                WHERE MaGH = %s AND MaSP = %s AND MauSac = 'Đen' AND Size = '42'
-            """, (ma_gh, product_id))
-
-            existing = cursor.fetchone()
-
-            if existing:
-                # Tăng số lượng
-                new_quantity = existing[0] + 1
+                # Insert product
                 cursor.execute("""
-                    UPDATE giohangchuasanpham 
-                    SET SoLuong = %s 
-                    WHERE MaGH = %s AND MaSP = %s AND MauSac = 'Đen' AND Size = '42'
-                """, (new_quantity, ma_gh, product_id))
+                    INSERT INTO sanpham (MaSP, TenSP, Gia, MoTa, MaTH, SoLuong)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (product_id, name, price, description if description else None, brand_id, quantity))
+
+                # Insert image URLs if provided
+                if image_urls:
+                    urls = [url.strip() for url in image_urls.split('\n') if url.strip()]
+                    for url in urls:
+                        cursor.execute("INSERT INTO url_sp (MaSP, URLAnh) VALUES (%s, %s)", (product_id, url))
+
+                conn.commit()
+                messagebox.showinfo("Thành công", f"Đã thêm sản phẩm '{name}' thành công!")
+                add_window.destroy()
+
+                # Refresh the product list
+                self.show_shoes(role, username)
+
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể thêm sản phẩm: {str(e)}")
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+
+        tk.Button(button_frame, text="Lưu", command=save_product,
+                 bg='#27ae60', fg='white', font=('Arial', 12, 'bold'), padx=20).pack(side='left', padx=10)
+        tk.Button(button_frame, text="Hủy", command=add_window.destroy,
+                 bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'), padx=20).pack(side='left', padx=10)
+
+    def set_show_cart_callback(self, callback):
+        """Set callback for showing cart"""
+        self.show_cart_callback = callback
+
+    def set_logout_callback(self, callback):
+        """Set logout callback"""
+        self.logout_callback = callback
+
+def load_thumbnail_image(path_or_url):
+    """Load thumbnail image 70x70 - from main.py"""
+    source = (path_or_url or "").strip()
+    if not source:
+        return None
+
+    image = None
+    try:
+        if source.lower().startswith(("http://", "https://")):
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            req = urllib.request.Request(source, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as response:
+                if response.getcode() != 200:
+                    return None
+                raw_data = response.read()
+            with Image.open(io.BytesIO(raw_data)) as img:
+                image = img.copy()
+        else:
+            candidate_paths = []
+            if os.path.isabs(source):
+                candidate_paths.append(source)
             else:
-                # Thêm sản phẩm mới
-                cursor.execute("""
-                    INSERT INTO giohangchuasanpham (MaGH, MaSP, MauSac, Size, SoLuong)
-                    VALUES (%s, %s, 'Đen', '42', 1)
-                """, (ma_gh, product_id))
+                candidate_paths.append(os.path.join(LOCAL_IMAGE_DIR, source))
+                candidate_paths.append(os.path.join(BASE_DIR, source))
 
-            conn.commit()
+            for file_path in candidate_paths:
+                if os.path.isfile(file_path):
+                    with Image.open(file_path) as img:
+                        image = img.copy()
+                    break
 
-            # Update cart count
-            self.load_cart_count()
+            if image is None:
+                return None
 
-            # Show success message
-            product_name = self.product_data[product_id]["name"]
-            messagebox.showinfo("Thành công", f"Đã thêm '{product_name}' vào giỏ hàng!")
+        if image.mode in ('RGBA', 'P'):
+            image = image.convert('RGB')
 
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Không thể thêm vào giỏ hàng: {str(e)}")
-        finally:
-            if 'cursor' in locals():
-                cursor.close()
-            if 'conn' in locals():
-                conn.close()
+        # Resize to thumbnail size
+        image = image.resize((70, 70), Image.Resampling.LANCZOS)
+        return ImageTk.PhotoImage(image)
 
-    def add_selected_to_cart(self):
-        """Thêm sản phẩm được chọn vào giỏ hàng"""
-        if self.selected_product_id:
-            self.add_to_cart(self.selected_product_id)
-
-    def open_cart(self):
-        """Mở view giỏ hàng"""
-        from views.cart_view import CartView
-        cart_view = CartView(username=self.username, parent_view=self)
-        cart_view.show()
-
-    def handle_logout(self):
-        """Xử lý đăng xuất"""
-        self.close()
-        # Import here to avoid circular import
-        from views.login_view import LoginView
-        login_view = LoginView(on_login_success=self.handle_login_success)
-        login_view.show()
-
-    def handle_login_success(self, role, username):
-        """Xử lý khi đăng nhập thành công"""
-        # Close current view
-        self.close()
-        # Create new product view
-        new_view = ProductView(role=role, username=username)
-        new_view.show()
-
-    def close(self):
-        """Đóng view với proper cleanup"""
-        try:
-            if self.root:
-                self.root.quit()
-                self.root.destroy()
-        except:
-            pass
+    except Exception as e:
+        print(f"Error loading thumbnail from {source}: {e}")
+        return None
