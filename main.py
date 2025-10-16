@@ -1055,6 +1055,37 @@ def show_invoice_page(username, role, cart_products, total_amount):
     root.title("Shop Shoes - Hóa đơn chi tiết")
     root.geometry("1000x800")
 
+    # Get customer info from database
+    customer_address = "Chưa cập nhật địa chỉ"
+    invoice_id = ""
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get customer address
+        cursor.execute("SELECT DiaChi, MaKH FROM khachhang WHERE TenDN = %s", (username,))
+        result = cursor.fetchone()
+        if result:
+            customer_address = result[0] if result[0] else "Chưa cập nhật địa chỉ"
+            ma_kh = result[1]
+
+            # Generate preview invoice ID
+            cursor.execute(
+                "SELECT MAX(CAST(SUBSTRING(MaHD, 3) AS UNSIGNED)) FROM hoadon WHERE MaHD LIKE 'HD%'"
+            )
+            result = cursor.fetchone()
+            next_number = ((result[0] or 0) + 1) if result else 1
+            invoice_id = f"HD{next_number:03d}"
+
+    except Exception as e:
+        print(f"Error getting customer info: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
     # Header frame
     header_frame = tk.Frame(root, bg='#2c3e50', height=60)
     header_frame.pack(fill='x')
@@ -1063,7 +1094,12 @@ def show_invoice_page(username, role, cart_products, total_amount):
     header_container = tk.Frame(header_frame, bg='#2c3e50')
     header_container.pack(fill='both', expand=True, padx=10)
 
-    tk.Label(header_container, text="📄 HÓA ĐƠN CHI TIẾT", font=('Arial', 20, 'bold'),
+    # Add invoice ID to header
+    header_title = f"📄 HÓA ĐƠN CHI TIẾT"
+    if invoice_id:
+        header_title += f" - {invoice_id}"
+
+    tk.Label(header_container, text=header_title, font=('Arial', 20, 'bold'),
              fg='white', bg='#2c3e50').pack(side='left', pady=15)
 
     # Back button
@@ -1087,7 +1123,7 @@ def show_invoice_page(username, role, cart_products, total_amount):
     # Shop info
     tk.Label(info_container, text="SHOP SHOES", font=('Arial', 18, 'bold'),
              bg='white', fg='#2c3e50').pack(anchor='w')
-    tk.Label(info_container, text="Địa chỉ: 123 Đường ABC, Quận XYZ, TP.HCM", font=('Arial', 12),
+    tk.Label(info_container, text=f"Địa chỉ: {customer_address}", font=('Arial', 12),
              bg='white', fg='#7f8c8d').pack(anchor='w')
     tk.Label(info_container, text="Điện thoại: 0123.456.789", font=('Arial', 12),
              bg='white', fg='#7f8c8d').pack(anchor='w')
@@ -1106,7 +1142,12 @@ def show_invoice_page(username, role, cart_products, total_amount):
     left_info = tk.Frame(invoice_info_frame, bg='white')
     left_info.pack(side='left', fill='x', expand=True)
 
-    tk.Label(left_info, text=f"Ngày lập: {current_time.strftime('%d/%m/%Y %H:%M')}", 
+    # Display invoice ID if available
+    if invoice_id:
+        tk.Label(left_info, text=f"Mã hóa đơn: {invoice_id}",
+                 font=('Arial', 12, 'bold'), bg='white', fg='#2c3e50').pack(anchor='w')
+
+    tk.Label(left_info, text=f"Ngày lập: {current_time.strftime('%d/%m/%Y %H:%M')}",
              font=('Arial', 12, 'bold'), bg='white', fg='#2c3e50').pack(anchor='w')
     tk.Label(left_info, text=f"Khách hàng: {username}", 
              font=('Arial', 12), bg='white', fg='#7f8c8d').pack(anchor='w')
