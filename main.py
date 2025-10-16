@@ -106,6 +106,59 @@ def toggle_reg_confirm_password():
         reg_btn_eye_confirm.config(text='👁')
         
 
+# Function để load giỏ hàng từ database khi đăng nhập
+def load_cart_from_database(username):
+    """Load dữ liệu giỏ hàng từ database vào memory cart"""
+    if not username:
+        return
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Lấy MaKH từ username
+        cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
+        result = cursor.fetchone()
+        if not result:
+            return
+
+        ma_kh = result[0]
+
+        # Lấy MaGH từ MaKH
+        cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+        gh_result = cursor.fetchone()
+        if not gh_result:
+            return
+
+        ma_gh = gh_result[0]
+
+        # Lấy tất cả sản phẩm trong giỏ hàng từ database
+        cursor.execute("""
+            SELECT MaSP, SoLuong FROM giohangchuasanpham 
+            WHERE MaGH = %s
+        """, (ma_gh,))
+
+        cart_items = cursor.fetchall()
+
+        # Clear và load lại cart từ database
+        if hasattr(show_shoes, 'cart'):
+            show_shoes.cart.clear()
+        else:
+            show_shoes.cart = {}
+
+        for ma_sp, so_luong in cart_items:
+            show_shoes.cart[ma_sp] = so_luong
+
+        print(f"Debug: Loaded cart from database: {show_shoes.cart}")
+
+    except Exception as e:
+        print(f"Error loading cart from database: {e}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 # Hiển thị danh sách giày
 def show_shoes(role=None, username=None):
     for widget in root.winfo_children():
@@ -114,9 +167,11 @@ def show_shoes(role=None, username=None):
     root.title("Shop Shoes - Danh sách sản phẩm")
     root.geometry("1200x750")  # Tăng height để chứa search bar
 
-    # Global cart storage (only for buyers)
+    # Global cart storage (only for buyers) - Load từ database
     if role == "buyer" and not hasattr(show_shoes, 'cart'):
         show_shoes.cart = {}
+        # Load cart data từ database khi đăng nhập
+        load_cart_from_database(username)
 
     header_frame = tk.Frame(root, bg='#2c3e50', height=60)
     header_frame.pack(fill='x')
@@ -132,8 +187,45 @@ def show_shoes(role=None, username=None):
     if role == "buyer":
         # Cart button for buyers
         def update_cart_button():
-            cart_count = sum(show_shoes.cart.values()) if hasattr(show_shoes, 'cart') else 0
-            return f"🛒 Giỏ hàng ({cart_count})"
+            """Calculate cart count from database for current user"""
+            if not username:
+                return "🛒 Giỏ hàng (0)"
+
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+
+                # Get MaKH from username
+                cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
+                result = cursor.fetchone()
+                if not result:
+                    return "🛒 Giỏ hàng (0)"
+
+                ma_kh = result[0]
+
+                # Get MaGH from MaKH
+                cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+                gh_result = cursor.fetchone()
+                if not gh_result:
+                    return "🛒 Giỏ hàng (0)"
+
+                ma_gh = gh_result[0]
+
+                # Calculate total quantity from giohangchuasanpham
+                cursor.execute("SELECT SUM(SoLuong) FROM giohangchuasanpham WHERE MaGH = %s", (ma_gh,))
+                count_result = cursor.fetchone()
+                cart_count = count_result[0] if count_result and count_result[0] else 0
+
+                return f"🛒 Giỏ hàng ({cart_count})"
+
+            except Exception as e:
+                print(f"Error calculating cart count: {e}")
+                return "🛒 Giỏ hàng (0)"
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
 
         btn_cart = tk.Button(header_container, text=update_cart_button(), command=lambda: show_cart(username, role),
                             bg='#f39c12', fg='white', relief='flat',
@@ -313,15 +405,82 @@ def show_shoes(role=None, username=None):
     def add_to_cart(ma_sp, ten_sp):
         if role != "buyer":
             return
-        print(f"Debug: Adding {ten_sp} to cart")
-        if ma_sp in show_shoes.cart:
-            show_shoes.cart[ma_sp] += 1
-        else:
-            show_shoes.cart[ma_sp] = 1
 
-        # Update cart button
-        btn_cart.config(text=update_cart_button())
-        messagebox.showinfo("Thành công", f"Đã thêm {ten_sp} vào giỏ hàng!")
+        print(f"Debug: Adding {ten_sp} to cart")
+
+        # Lưu vào database thay vì chỉ lưu trong memory
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Lấy MaKH từ username
+            cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
+            result = cursor.fetchone()
+            if not result:
+                messagebox.showerror("Lỗi", "Không tìm thấy thông tin khách hàng!")
+                return
+
+            ma_kh = result[0]
+
+            # Kiểm tra và tạo giỏ hàng nếu chưa có
+            cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+            gh_result = cursor.fetchone()
+
+            if not gh_result:
+                # Tạo mã giỏ hàng mới
+                cursor.execute("SELECT MAX(CAST(SUBSTRING(MaGH, 3) AS UNSIGNED)) FROM giohang")
+                max_result = cursor.fetchone()
+                next_id = (max_result[0] + 1) if max_result[0] else 1
+                ma_gh = f"GH{next_id:03d}"
+
+                cursor.execute("INSERT INTO giohang (MaGH, MaKH) VALUES (%s, %s)", (ma_gh, ma_kh))
+            else:
+                ma_gh = gh_result[0]
+
+            # Kiểm tra sản phẩm đã có trong giỏ hàng chưa (với màu sắc và size mặc định)
+            cursor.execute("""
+                SELECT SoLuong FROM giohangchuasanpham 
+                WHERE MaGH = %s AND MaSP = %s AND MauSac = 'Đen' AND Size = '42'
+            """, (ma_gh, ma_sp))
+
+            existing = cursor.fetchone()
+
+            if existing:
+                # Tăng số lượng
+                new_quantity = existing[0] + 1
+                cursor.execute("""
+                    UPDATE giohangchuasanpham 
+                    SET SoLuong = %s 
+                    WHERE MaGH = %s AND MaSP = %s AND MauSac = 'Đen' AND Size = '42'
+                """, (new_quantity, ma_gh, ma_sp))
+            else:
+                # Thêm sản phẩm mới với màu sắc và size mặc định
+                cursor.execute("""
+                    INSERT INTO giohangchuasanpham (MaGH, MaSP, MauSac, Size, SoLuong)
+                    VALUES (%s, %s, 'Đen', '42', 1)
+                """, (ma_gh, ma_sp))
+
+            conn.commit()
+
+            # Cập nhật memory cart để đồng bộ với UI (tạm thời)
+            if ma_sp in show_shoes.cart:
+                show_shoes.cart[ma_sp] += 1
+            else:
+                show_shoes.cart[ma_sp] = 1
+
+            # Update cart button
+            btn_cart.config(text=update_cart_button())
+            messagebox.showinfo("Thành công", f"Đã thêm {ten_sp} vào giỏ hàng!")
+
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể thêm sản phẩm vào giỏ hàng: {str(e)}")
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
     def delete_product(ma_sp, ten_sp):
         if role != "seller":
@@ -640,7 +799,7 @@ def show_shoes(role=None, username=None):
     gallery_section.pack(fill='x', padx=15, pady=(0, 10))
 
     tk.Label(gallery_section, text="Các ảnh khác:", font=('Arial', 12, 'bold'),
-             bg='#f8f9fa').pack(anchor='w', pady=(0, 5))
+             bg='#f9f9fa').pack(anchor='w', pady=(0, 5))
 
     # Scrollable thumbnail container
     thumbnail_frame = tk.Frame(gallery_section, bg='white', height=80, relief='solid', bd=1)
@@ -836,14 +995,7 @@ def show_cart(username, role="buyer"):
     main_frame = tk.Frame(root, bg='#f8f9fa')
     main_frame.pack(fill='both', expand=True, padx=20, pady=20)
 
-    if not hasattr(show_shoes, 'cart') or not show_shoes.cart:
-        tk.Label(main_frame, text="Giỏ hàng trống",
-                font=('Arial', 18), bg='#f8f9fa', fg='#6c757d').pack(expand=True)
-        return
-
-    # Load product details from database
-    conn = None
-    cursor = None
+    # Load cart data trực tiếp từ database dựa vào username
     cart_products = {}
     total_amount = 0
 
@@ -851,21 +1003,67 @@ def show_cart(username, role="buyer"):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        for ma_sp, quantity in show_shoes.cart.items():
-            cursor.execute("""
-                SELECT TenSP, Gia FROM sanpham WHERE MaSP = %s
-            """, (ma_sp,))
-            result = cursor.fetchone()
-            if result:
-                ten_sp, gia = result
-                price = float(gia) if gia else 0
-                cart_products[ma_sp] = {
-                    'name': ten_sp,
-                    'price': price,
-                    'quantity': quantity,
-                    'total': price * quantity
-                }
-                total_amount += price * quantity
+        # Lấy MaKH từ username
+        cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
+        result = cursor.fetchone()
+        if not result:
+            tk.Label(main_frame, text="Không tìm thấy thông tin khách hàng",
+                    font=('Arial', 18), bg='#f8f9fa', fg='#e74c3c').pack(expand=True)
+            return
+
+        ma_kh = result[0]
+
+        # Lấy MaGH từ MaKH
+        cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+        gh_result = cursor.fetchone()
+
+        if not gh_result:
+            # Giỏ hàng trống
+            tk.Label(main_frame, text="Giỏ hàng trống",
+                    font=('Arial', 18), bg='#f8f9fa', fg='#6c757d').pack(expand=True)
+            return
+
+        ma_gh = gh_result[0]
+
+        # Lấy chi tiết giỏ hàng với thông tin sản phẩm từ database
+        cursor.execute("""
+            SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.MauSac, ghsp.Size, ghsp.SoLuong,
+                   (sp.Gia * ghsp.SoLuong) as ThanhTien
+            FROM giohangchuasanpham ghsp
+            JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
+            WHERE ghsp.MaGH = %s
+            ORDER BY sp.TenSP
+        """, (ma_gh,))
+
+        cart_items = cursor.fetchall()
+
+        if not cart_items:
+            tk.Label(main_frame, text="Giỏ hàng trống",
+                    font=('Arial', 18), bg='#f8f9fa', fg='#6c757d').pack(expand=True)
+            return
+
+        # Tổ chức dữ liệu giỏ hàng
+        for ma_sp, ten_sp, gia, mau_sac, size, so_luong, thanh_tien in cart_items:
+            cart_key = f"{ma_sp}_{mau_sac}_{size}"
+            cart_products[cart_key] = {
+                'product_id': ma_sp,
+                'name': ten_sp,
+                'price': float(gia),
+                'color': mau_sac,
+                'size': size,
+                'quantity': so_luong,
+                'total': float(thanh_tien)
+            }
+            total_amount += float(thanh_tien)
+
+        # Cập nhật memory cart để đồng bộ với UI
+        if hasattr(show_shoes, 'cart'):
+            show_shoes.cart.clear()
+            for ma_sp, _, _, _, _, so_luong, _ in cart_items:
+                if ma_sp in show_shoes.cart:
+                    show_shoes.cart[ma_sp] += so_luong
+                else:
+                    show_shoes.cart[ma_sp] = so_luong
 
     except Exception as e:
         messagebox.showerror("Lỗi", f"Không thể tải dữ liệu giỏ hàng: {str(e)}")
@@ -876,16 +1074,12 @@ def show_cart(username, role="buyer"):
         if conn:
             conn.close()
 
-    # Debug: Print cart contents
-    print(f"Debug: Cart contents: {show_shoes.cart}")
-    print(f"Debug: Cart products loaded: {cart_products}")
-    print(f"Debug: Total amount: {total_amount}")
+    print(f"Debug: Loaded cart for user {username}: {len(cart_products)} items, total: {total_amount}")
 
     # Cart title
     tk.Label(main_frame, text="Chi tiết giỏ hàng:", font=('Arial', 16, 'bold'),
              bg='#f8f9fa').pack(anchor='w', pady=(0, 10))
 
-    # Create a simpler layout without canvas for now to debug
     # Table header
     header_frame_table = tk.Frame(main_frame, bg='#34495e', height=40)
     header_frame_table.pack(fill='x', pady=(0, 5))
@@ -893,36 +1087,66 @@ def show_cart(username, role="buyer"):
 
     # Header labels
     tk.Label(header_frame_table, text="Tên sản phẩm", font=('Arial', 12, 'bold'),
-             bg='#34495e', fg='white', width=30, anchor='w').pack(side='left', padx=5, pady=5)
+             bg='#34495e', fg='white', width=25, anchor='w').pack(side='left', padx=5, pady=5)
+    tk.Label(header_frame_table, text="Màu sắc", font=('Arial', 12, 'bold'),
+             bg='#34495e', fg='white', width=10).pack(side='left', padx=5, pady=5)
+    tk.Label(header_frame_table, text="Size", font=('Arial', 12, 'bold'),
+             bg='#34495e', fg='white', width=8).pack(side='left', padx=5, pady=5)
     tk.Label(header_frame_table, text="Số lượng", font=('Arial', 12, 'bold'),
              bg='#34495e', fg='white', width=10).pack(side='left', padx=5, pady=5)
     tk.Label(header_frame_table, text="Đơn giá", font=('Arial', 12, 'bold'),
-             bg='#34495e', fg='white', width=15).pack(side='left', padx=5, pady=5)
-    tk.Label(header_frame_table, text="Thành tiền", font=('Arial', 12, 'bold'),
-             bg='#34495e', fg='white', width=15).pack(side='left', padx=5, pady=5)
-    tk.Label(header_frame_table, text="Hành động", font=('Arial', 12, 'bold'),
              bg='#34495e', fg='white', width=12).pack(side='left', padx=5, pady=5)
+    tk.Label(header_frame_table, text="Thành tiền", font=('Arial', 12, 'bold'),
+             bg='#34495e', fg='white', width=12).pack(side='left', padx=5, pady=5)
+    tk.Label(header_frame_table, text="Hành động", font=('Arial', 12, 'bold'),
+             bg='#34495e', fg='white', width=10).pack(side='left', padx=5, pady=5)
 
-    # Items container with scrollbar
+    # Items container
     items_container = tk.Frame(main_frame, bg='#f8f9fa')
     items_container.pack(fill='both', expand=True, pady=(0, 20))
 
-    # Function to remove item from cart
-    def remove_from_cart(ma_sp):
-        if ma_sp in show_shoes.cart:
-            product_name = cart_products[ma_sp]['name']
-            result = messagebox.askyesno("Xác nhận xóa",
-                                       f"Bạn có chắc muốn xóa '{product_name}' khỏi giỏ hàng?")
-            if result:
-                del show_shoes.cart[ma_sp]
-                show_cart(username, role)  # Refresh cart view
-                messagebox.showinfo("Thành công", "Đã xóa sản phẩm khỏi giỏ hàng!")
+    # Function to remove item from cart - cập nhật để xóa từ database
+    def remove_from_cart_db(product_id, color, size):
+        result = messagebox.askyesno("Xác nhận xóa",
+                                   f"Bạn có chắc muốn xóa sản phẩm này khỏi giỏ hàng?")
+        if not result:
+            return
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Lấy MaKH và MaGH
+            cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
+            result = cursor.fetchone()
+            ma_kh = result[0]
+
+            cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+            result = cursor.fetchone()
+            ma_gh = result[0]
+
+            # Xóa sản phẩm khỏi giỏ hàng
+            cursor.execute("""
+                DELETE FROM giohangchuasanpham 
+                WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
+            """, (ma_gh, product_id, color, size))
+
+            conn.commit()
+            messagebox.showinfo("Thành công", "Đã xóa sản phẩm khỏi giỏ hàng!")
+
+            # Refresh cart view
+            show_cart(username, role)
+
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể xóa sản phẩm: {str(e)}")
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
     # Create product rows
-    row_count = 0
-    for ma_sp, product in cart_products.items():
-        print(f"Debug: Creating row for product {ma_sp}: {product['name']}")
-
+    for cart_key, product in cart_products.items():
         # Product row frame
         product_frame = tk.Frame(items_container, bg='white', relief='solid', bd=1, height=60)
         product_frame.pack(fill='x', pady=2)
@@ -930,8 +1154,18 @@ def show_cart(username, role="buyer"):
 
         # Product name
         name_label = tk.Label(product_frame, text=product['name'], font=('Arial', 11),
-                             bg='white', width=30, anchor='w', wraplength=200)
+                             bg='white', width=25, anchor='w', wraplength=180)
         name_label.pack(side='left', padx=5, pady=10)
+
+        # Color
+        color_label = tk.Label(product_frame, text=product['color'], font=('Arial', 11),
+                              bg='white', width=10)
+        color_label.pack(side='left', padx=5, pady=10)
+
+        # Size
+        size_label = tk.Label(product_frame, text=product['size'], font=('Arial', 11),
+                             bg='white', width=8)
+        size_label.pack(side='left', padx=5, pady=10)
 
         # Quantity
         qty_label = tk.Label(product_frame, text=str(product['quantity']), font=('Arial', 11),
@@ -941,33 +1175,21 @@ def show_cart(username, role="buyer"):
         # Unit price
         price_display = f"{product['price']:,.0f} VNĐ"
         price_label = tk.Label(product_frame, text=price_display, font=('Arial', 11),
-                              bg='white', width=15)
+                              bg='white', width=12)
         price_label.pack(side='left', padx=5, pady=10)
 
         # Total price
         total_display = f"{product['total']:,.0f} VNĐ"
         total_label = tk.Label(product_frame, text=total_display, font=('Arial', 11, 'bold'),
-                              bg='white', width=15, fg='#e74c3c')
+                              bg='white', width=12, fg='#e74c3c')
         total_label.pack(side='left', padx=5, pady=10)
 
         # Remove button
-        btn_remove = tk.Button(product_frame, text="🗑️ Xóa",
-                              command=lambda product_id=ma_sp: remove_from_cart(product_id),
-                              bg='#e74c3c', fg='white', font=('Arial', 10, 'bold'),
-                              width=10, cursor='hand2', relief='flat')
+        btn_remove = tk.Button(product_frame, text="🗑️",
+                              command=lambda pid=product['product_id'], color=product['color'], size=product['size']: remove_from_cart_db(pid, color, size),
+                              bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
+                              width=8, cursor='hand2', relief='flat')
         btn_remove.pack(side='left', padx=5, pady=5)
-
-        row_count += 1
-        print(f"Debug: Created row {row_count} for {product['name']}")
-
-    print(f"Debug: Total rows created: {row_count}")
-
-    # If no products were displayed but we have cart data, show debug info
-    if row_count == 0 and cart_products:
-        debug_label = tk.Label(items_container,
-                              text=f"Debug: Found {len(cart_products)} products but rows not displaying\nCart: {list(cart_products.keys())}",
-                              font=('Arial', 10), bg='#f8f9fa', fg='red')
-        debug_label.pack(pady=10)
 
     # Total section
     total_frame = tk.Frame(main_frame, bg='#ecf0f1', relief='ridge', bd=2)
@@ -987,16 +1209,79 @@ def show_cart(username, role="buyer"):
     button_frame.pack(fill='x', pady=(20, 0))
 
     btn_clear = tk.Button(button_frame, text="🗑️ Xóa tất cả",
-                         command=lambda: clear_cart(username, role),
+                         command=lambda: clear_cart_db(username, role),
                          bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
                          padx=20, pady=10, relief='flat', cursor='hand2')
     btn_clear.pack(side='left')
 
     btn_view_invoice = tk.Button(button_frame, text="📄 Xem hóa đơn",
-                           command=lambda: view_invoice_from_cart(username, role, total_amount),
+                           command=lambda: view_invoice_from_cart_db(username, role, cart_products, total_amount),
                            bg='#f39c12', fg='white', font=('Arial', 12, 'bold'),
                            padx=20, pady=10, relief='flat', cursor='hand2')
     btn_view_invoice.pack(side='right')
+
+def clear_cart_db(username, role="buyer"):
+    """Xóa toàn bộ giỏ hàng từ database"""
+    result = messagebox.askyesno("Xác nhận", "Bạn có chắc muốn xóa tất cả sản phẩm trong giỏ hàng?")
+    if not result:
+        return
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Lấy MaKH và MaGH
+        cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
+        result = cursor.fetchone()
+        if not result:
+            return
+
+        ma_kh = result[0]
+
+        cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+        result = cursor.fetchone()
+        if not result:
+            return
+
+        ma_gh = result[0]
+
+        # Xóa toàn bộ sản phẩm trong giỏ hàng từ database
+        cursor.execute("DELETE FROM giohangchuasanpham WHERE MaGH = %s", (ma_gh,))
+        conn.commit()
+
+        # Clear memory cart
+        if hasattr(show_shoes, 'cart'):
+            show_shoes.cart.clear()
+
+        messagebox.showinfo("Thành công", "Đã xóa tất cả sản phẩm!")
+        show_cart(username, role)
+
+    except Exception as e:
+        messagebox.showerror("Lỗi", f"Không thể xóa giỏ hàng: {str(e)}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+def view_invoice_from_cart_db(username, role, cart_products, total_amount):
+    """Xem hóa đơn từ giỏ hàng - sử dụng dữ liệu từ database"""
+    if not cart_products:
+        messagebox.showwarning("Cảnh báo", "Giỏ hàng trống!")
+        return
+
+    # Convert cart_products format để tương thích với show_invoice_page
+    converted_products = {}
+    for cart_key, product in cart_products.items():
+        converted_products[product['product_id']] = {
+            'name': product['name'],
+            'price': product['price'],
+            'quantity': product['quantity'],
+            'total': product['total']
+        }
+
+    # Hiển thị trang hóa đơn
+    show_invoice_page(username, role, converted_products, total_amount)
 
 def clear_cart(username, role="buyer"):
     result = messagebox.askyesno("Xác nhận", "Bạn có chắc muốn xóa tất cả sản phẩm trong giỏ hàng?")
@@ -1057,18 +1342,20 @@ def show_invoice_page(username, role, cart_products, total_amount):
 
     # Get customer info from database
     customer_address = "Chưa cập nhật địa chỉ"
+    customer_phone = "Chưa cập nhật số điện thoại"
     invoice_id = ""
-
+    
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-
-        # Get customer address
-        cursor.execute("SELECT DiaChi, MaKH FROM khachhang WHERE TenDN = %s", (username,))
+        
+        # Get customer address and phone
+        cursor.execute("SELECT DiaChi, SDT, MaKH FROM khachhang WHERE TenDN = %s", (username,))
         result = cursor.fetchone()
         if result:
             customer_address = result[0] if result[0] else "Chưa cập nhật địa chỉ"
-            ma_kh = result[1]
+            customer_phone = result[1] if result[1] else "Chưa cập nhật số điện thoại"
+            ma_kh = result[2]
 
             # Generate preview invoice ID
             cursor.execute(
@@ -1077,7 +1364,7 @@ def show_invoice_page(username, role, cart_products, total_amount):
             result = cursor.fetchone()
             next_number = ((result[0] or 0) + 1) if result else 1
             invoice_id = f"HD{next_number:03d}"
-
+        
     except Exception as e:
         print(f"Error getting customer info: {e}")
     finally:
@@ -1098,7 +1385,7 @@ def show_invoice_page(username, role, cart_products, total_amount):
     header_title = f"📄 HÓA ĐƠN CHI TIẾT"
     if invoice_id:
         header_title += f" - {invoice_id}"
-
+    
     tk.Label(header_container, text=header_title, font=('Arial', 20, 'bold'),
              fg='white', bg='#2c3e50').pack(side='left', pady=15)
 
@@ -1125,7 +1412,7 @@ def show_invoice_page(username, role, cart_products, total_amount):
              bg='white', fg='#2c3e50').pack(anchor='w')
     tk.Label(info_container, text=f"Địa chỉ: {customer_address}", font=('Arial', 12),
              bg='white', fg='#7f8c8d').pack(anchor='w')
-    tk.Label(info_container, text="Điện thoại: 0123.456.789", font=('Arial', 12),
+    tk.Label(info_container, text=f"Điện thoại: {customer_phone}", font=('Arial', 12),
              bg='white', fg='#7f8c8d').pack(anchor='w')
 
     # Divider
@@ -1144,10 +1431,10 @@ def show_invoice_page(username, role, cart_products, total_amount):
 
     # Display invoice ID if available
     if invoice_id:
-        tk.Label(left_info, text=f"Mã hóa đơn: {invoice_id}",
+        tk.Label(left_info, text=f"Mã hóa đơn: {invoice_id}", 
                  font=('Arial', 12, 'bold'), bg='white', fg='#2c3e50').pack(anchor='w')
-
-    tk.Label(left_info, text=f"Ngày lập: {current_time.strftime('%d/%m/%Y %H:%M')}",
+    
+    tk.Label(left_info, text=f"Ngày lập: {current_time.strftime('%d/%m/%Y %H:%M')}", 
              font=('Arial', 12, 'bold'), bg='white', fg='#2c3e50').pack(anchor='w')
     tk.Label(left_info, text=f"Khách hàng: {username}", 
              font=('Arial', 12), bg='white', fg='#7f8c8d').pack(anchor='w')
@@ -1536,3 +1823,4 @@ root.bind('<Escape>', exit_fullscreen)   # Escape để thoát fullscreen
 
 show_login()
 root.mainloop()
+
