@@ -284,19 +284,23 @@ class ProductView:
 
         # Add quantity column for sellers
         if role == "seller":
-            tree = ttk.Treeview(tree_frame, columns=("Tên", "Giá", "SL"), show="headings", height=8, style="Custom.Treeview")
+            tree = ttk.Treeview(tree_frame, columns=("Mã SP", "Tên", "Giá", "SL"), show="headings", height=8, style="Custom.Treeview")
+            tree.heading("Mã SP", text="Mã SP")
             tree.heading("Tên", text="Tên giày")
             tree.heading("Giá", text="Giá")
             tree.heading("SL", text="SL")
-            tree.column("Tên", width=200)
-            tree.column("Giá", width=100, anchor='e')
+            tree.column("Mã SP", width=80)
+            tree.column("Tên", width=160)
+            tree.column("Giá", width=90, anchor='e')
             tree.column("SL", width=50, anchor='e')
         else:
-            tree = ttk.Treeview(tree_frame, columns=("Tên", "Giá"), show="headings", height=8, style="Custom.Treeview")
+            tree = ttk.Treeview(tree_frame, columns=("Mã SP", "Tên", "Giá"), show="headings", height=8, style="Custom.Treeview")
+            tree.heading("Mã SP", text="Mã SP")
             tree.heading("Tên", text="Tên giày")
             tree.heading("Giá", text="Giá")
-            tree.column("Tên", width=250)
-            tree.column("Giá", width=130, anchor='e')
+            tree.column("Mã SP", width=80)
+            tree.column("Tên", width=180)
+            tree.column("Giá", width=110, anchor='e')
 
         scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
@@ -432,9 +436,101 @@ class ProductView:
             selected_color = color_var.get()
             selected_size = size_var.get()
 
-            print(f"Debug: Adding {ten_sp} (Color: {selected_color}, Size: {selected_size}) to cart")
+            # Get current stock for this product
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT SoLuong FROM sanpham WHERE MaSP = %s", (ma_sp,))
+                stock_result = cursor.fetchone()
+                available_stock = stock_result[0] if stock_result else 0
 
-            # Save to database with selected color and size
+                if available_stock <= 0:
+                    messagebox.showwarning("Hết hàng", f"Sản phẩm {ten_sp} hiện đã hết hàng!")
+                    return
+
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể kiểm tra tồn kho: {str(e)}")
+                return
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+
+            # Create quantity input dialog
+            quantity_dialog = tk.Toplevel(self.root)
+            quantity_dialog.title("Chọn số lượng")
+            quantity_dialog.geometry("380x250")  # Increased size from 350x200
+            quantity_dialog.resizable(False, False)
+            quantity_dialog.grab_set()  # Make dialog modal
+
+            # Center the dialog
+            quantity_dialog.transient(self.root)
+            quantity_dialog.geometry("+%d+%d" % (self.root.winfo_rootx() + 50, self.root.winfo_rooty() + 50))
+
+            # Dialog content with better spacing
+            tk.Label(quantity_dialog, text=f"Sản phẩm: {ten_sp}",
+                    font=('Arial', 12, 'bold')).pack(pady=(15, 8))
+            tk.Label(quantity_dialog, text=f"Màu sắc: {selected_color} | Size: {selected_size}",
+                    font=('Arial', 10)).pack(pady=5)
+            tk.Label(quantity_dialog, text=f"Số lượng có sẵn: {available_stock}",
+                    font=('Arial', 10), fg='#27ae60').pack(pady=5)
+
+            # Quantity input frame
+            input_frame = tk.Frame(quantity_dialog)
+            input_frame.pack(pady=20)
+
+            tk.Label(input_frame, text="Chọn số lượng:", font=('Arial', 12, 'bold')).pack(side='left', padx=(0, 10))
+
+            # Quantity spinbox with validation
+            quantity_var = tk.IntVar(value=1)
+            quantity_spin = tk.Spinbox(input_frame, from_=1, to=available_stock,
+                                     textvariable=quantity_var, width=10,
+                                     font=('Arial', 12), justify='center')
+            quantity_spin.pack(side='left')
+            quantity_spin.focus()  # Focus on spinbox
+
+            # Button frame with better spacing
+            button_frame = tk.Frame(quantity_dialog)
+            button_frame.pack(pady=(30, 20))  # More padding
+
+            def confirm_add():
+                selected_quantity = quantity_var.get()
+
+                # Validate quantity
+                if selected_quantity < 1:
+                    messagebox.showwarning("Lỗi", "Số lượng phải lớn hơn 0!")
+                    return
+                if selected_quantity > available_stock:
+                    messagebox.showwarning("Lỗi", f"Số lượng vượt quá tồn kho! (Còn lại: {available_stock})")
+                    return
+
+                quantity_dialog.destroy()
+
+                # Add to cart with selected quantity
+                add_to_cart_with_quantity(ma_sp, ten_sp, selected_color, selected_size, selected_quantity)
+
+            def cancel_add():
+                quantity_dialog.destroy()
+
+            # Larger, more visible buttons
+            tk.Button(button_frame, text="✅ Thêm vào giỏ hàng", command=confirm_add,
+                     bg='#27ae60', fg='white', font=('Arial', 12, 'bold'),
+                     padx=25, pady=10, cursor='hand2', relief='raised', bd=2).pack(side='left', padx=(0, 15))
+
+            tk.Button(button_frame, text="❌ Hủy bỏ", command=cancel_add,
+                     bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'),
+                     padx=25, pady=10, cursor='hand2', relief='raised', bd=2).pack(side='left')
+
+            # Allow Enter key to confirm
+            quantity_dialog.bind('<Return>', lambda e: confirm_add())
+            quantity_spin.bind('<Return>', lambda e: confirm_add())
+
+        def add_to_cart_with_quantity(ma_sp, ten_sp, selected_color, selected_size, quantity):
+            """Add product to cart with specified quantity"""
+            print(f"Debug: Adding {quantity}x {ten_sp} (Color: {selected_color}, Size: {selected_size}) to cart")
+
+            # Save to database with selected color, size and quantity
             conn = None
             cursor = None
             try:
@@ -465,41 +561,101 @@ class ProductView:
                 else:
                     ma_gh = gh_result[0]
 
-                # Check if product with same color and size already in cart
+                # CRITICAL VALIDATION: Check total stock vs total demand
+                # 1. Get current available stock for this product
+                cursor.execute("SELECT SoLuong FROM sanpham WHERE MaSP = %s", (ma_sp,))
+                stock_result = cursor.fetchone()
+                available_stock = stock_result[0] if stock_result else 0
+
+                # 2. Calculate total quantity of this product already in ALL carts (all users, all colors/sizes)
+                cursor.execute("""
+                    SELECT SUM(ghsp.SoLuong) 
+                    FROM giohangchuasanpham ghsp
+                    WHERE ghsp.MaSP = %s
+                """, (ma_sp,))
+                total_in_carts_result = cursor.fetchone()
+                total_in_all_carts = total_in_carts_result[0] if total_in_carts_result and total_in_carts_result[0] else 0
+
+                # 3. Check if current user already has this specific color/size combination
                 cursor.execute("""
                     SELECT SoLuong FROM giohangchuasanpham 
                     WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
                 """, (ma_gh, ma_sp, selected_color, selected_size))
-
                 existing = cursor.fetchone()
+                current_user_has = existing[0] if existing else 0
 
+                # 4. Calculate what the new total would be
+                # If user already has this color/size combo, we're adding to it
+                # If not, we're adding a new entry
                 if existing:
-                    # Increase quantity
-                    new_quantity = existing[0] + 1
+                    new_user_total = current_user_has + quantity
+                    total_demand_increase = quantity  # Only the new quantity adds to total demand
+                else:
+                    new_user_total = quantity
+                    total_demand_increase = quantity
+
+                new_total_in_carts = total_in_all_carts + total_demand_increase
+
+                # 5. VALIDATION: Check if adding this quantity would exceed available stock
+                if new_total_in_carts > available_stock:
+                    remaining_available = available_stock - total_in_all_carts
+                    if remaining_available <= 0:
+                        messagebox.showwarning("Hết hàng",
+                                             f"Sản phẩm '{ten_sp}' đã hết hàng!\n"
+                                             f"Hiện tại có {total_in_all_carts} sản phẩm trong giỏ hàng của các khách hàng khác.\n"
+                                             f"Tồn kho: {available_stock}")
+                        return
+                    else:
+                        messagebox.showwarning("Cảnh báo tồn kho",
+                                             f"Không thể thêm {quantity} sản phẩm '{ten_sp}'!\n\n"
+                                             f"📦 Tồn kho hiện tại: {available_stock}\n"
+                                             f"🛒 Đã có trong giỏ hàng (tất cả khách): {total_in_all_carts}\n"
+                                             f"✅ Có thể thêm tối đa: {remaining_available}\n\n"
+                                             f"Bạn đã có trong giỏ: {current_user_has} (màu {selected_color}, size {selected_size})")
+                        return
+
+                # 6. If validation passes, proceed to add/update cart
+                if existing:
+                    # Update existing cart item
                     cursor.execute("""
                         UPDATE giohangchuasanpham 
                         SET SoLuong = %s 
                         WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
-                    """, (new_quantity, ma_gh, ma_sp, selected_color, selected_size))
+                    """, (new_user_total, ma_gh, ma_sp, selected_color, selected_size))
+
+                    success_message = (f"Đã cập nhật giỏ hàng!\n"
+                                     f"Sản phẩm: {ten_sp}\n"
+                                     f"Màu sắc: {selected_color}, Size: {selected_size}\n"
+                                     f"Số lượng mới: {new_user_total}")
                 else:
-                    # Add new product with selected color and size
+                    # Add new cart item
                     cursor.execute("""
                         INSERT INTO giohangchuasanpham (MaGH, MaSP, MauSac, Size, SoLuong)
-                        VALUES (%s, %s, %s, %s, 1)
-                    """, (ma_gh, ma_sp, selected_color, selected_size))
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (ma_gh, ma_sp, selected_color, selected_size, quantity))
+
+                    success_message = (f"Đã thêm vào giỏ hàng!\n"
+                                     f"Sản phẩm: {ten_sp}\n"
+                                     f"Màu sắc: {selected_color}, Size: {selected_size}\n"
+                                     f"Số lượng: {quantity}")
 
                 conn.commit()
 
                 # Update memory cart to sync with UI (temporary)
                 cart_key = f"{ma_sp}_{selected_color}_{selected_size}"
                 if cart_key in self.cart:
-                    self.cart[cart_key] += 1
+                    self.cart[cart_key] += quantity
                 else:
-                    self.cart[cart_key] = 1
+                    self.cart[cart_key] = quantity
 
                 # Update cart button
                 btn_cart.config(text=update_cart_button())
-                messagebox.showinfo("Thành công", f"Đã thêm {ten_sp} (Màu: {selected_color}, Size: {selected_size}) vào giỏ hàng!")
+
+                # Show success message with stock info
+                remaining_after = available_stock - new_total_in_carts
+                messagebox.showinfo("Thành công",
+                                   f"{success_message}\n\n"
+                                   f"📦 Còn lại trong kho: {remaining_after}")
 
             except Exception as e:
                 messagebox.showerror("Lỗi", f"Không thể thêm sản phẩm vào giỏ hàng: {str(e)}")
@@ -554,10 +710,12 @@ class ProductView:
             selected_price = price_var.get()
 
             filtered_products = []
+            out_of_stock_count = 0
+            low_stock_count = 0
 
             for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong in all_products:
-                # Filter by search text
-                if search_text and search_text not in ten_sp.lower():
+                # Filter by search text - Updated to search both product code and name
+                if search_text and search_text not in ten_sp.lower() and search_text not in ma_sp.lower():
                     continue
 
                 # Filter by brand
@@ -578,14 +736,31 @@ class ProductView:
 
                 filtered_products.append((ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong))
 
-            # Populate treeview
+                # Count stock warnings for sellers
+                if role == "seller":
+                    if so_luong == 0:
+                        out_of_stock_count += 1
+                    elif so_luong <= 5:
+                        low_stock_count += 1
+
+            # Populate treeview with stock warnings for sellers
             product_data.clear()
             for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong in filtered_products:
                 price_display = f"{float(gia):,.0f} VNĐ" if gia is not None else "N/A"
                 if role == "seller":
-                    tree.insert("", "end", iid=ma_sp, values=(ten_sp, price_display, so_luong))
+                    # Add visual indicators for stock levels
+                    if so_luong == 0:
+                        display_name = f"⚠️ {ten_sp} (HẾT HÀNG)"
+                        item_id = tree.insert("", "end", iid=ma_sp, values=(ma_sp, display_name, price_display, so_luong))
+                        tree.set(item_id, "SL", f"⚠️ {so_luong}")
+                    elif so_luong <= 5:
+                        display_name = f"⚡ {ten_sp} (SẮP HẾT)"
+                        item_id = tree.insert("", "end", iid=ma_sp, values=(ma_sp, display_name, price_display, so_luong))
+                        tree.set(item_id, "SL", f"⚡ {so_luong}")
+                    else:
+                        tree.insert("", "end", iid=ma_sp, values=(ma_sp, ten_sp, price_display, so_luong))
                 else:
-                    tree.insert("", "end", iid=ma_sp, values=(ten_sp, price_display))
+                    tree.insert("", "end", iid=ma_sp, values=(ma_sp, ten_sp, price_display))
                 product_data[ma_sp] = {
                     "name": ten_sp,
                     "price": price_display,
@@ -594,8 +769,23 @@ class ProductView:
                     "quantity": so_luong
                 }
 
-            # Update status label with count
-            status_label.config(text=f"Tổng sản phẩm: {len(filtered_products)}")
+            # Update status label with count and stock warnings
+            if role == "seller":
+                status_text = f"Tổng sản phẩm: {len(filtered_products)}"
+                if out_of_stock_count > 0:
+                    status_text += f" | ⚠️ HẾT HÀNG: {out_of_stock_count}"
+                if low_stock_count > 0:
+                    status_text += f" | ⚡ SẮP HẾT: {low_stock_count}"
+                status_label.config(text=status_text, fg='#e74c3c' if out_of_stock_count > 0 else '#f39c12' if low_stock_count > 0 else '#7f8c8d')
+
+                # Show warning popup for critical stock levels
+                if out_of_stock_count > 0 and not hasattr(filter_products, '_warning_shown'):
+                    messagebox.showwarning("Cảnh báo hàng tồn",
+                                         f"Có {out_of_stock_count} sản phẩm đã hết hàng!\n"
+                                         f"Vui lòng nhập thêm hàng hoặc ẩn sản phẩm.")
+                    filter_products._warning_shown = True
+            else:
+                status_label.config(text=f"Tổng sản phẩm: {len(filtered_products)}", fg='#7f8c8d')
 
         # Bind filter events
         btn_search.config(command=filter_products)
@@ -675,50 +865,58 @@ class ProductView:
                                       font=('Arial', 18, 'bold'), bg='#f8f9fa', fg='#2c3e50')
         product_name_label.pack(pady=(15, 10))
 
-        # Main image display area
-        main_image_frame = tk.Frame(detail_frame, bg='white', relief='solid', bd=1, height=300)
-        main_image_frame.pack(fill='x', padx=15, pady=(0, 10))
+        # Create horizontal container for image and gallery
+        content_container = tk.Frame(detail_frame, bg='#f8f9fa')
+        content_container.pack(fill='both', expand=True, padx=15)
+
+        # Left side - Image and description section
+        image_section = tk.Frame(content_container, bg='#f8f9fa')
+        image_section.pack(side='left', fill='both', expand=True, padx=(0, 15))
+
+        # Main image display area (reduced height to prevent overlap)
+        main_image_frame = tk.Frame(image_section, bg='white', relief='solid', bd=1, height=500)
+        main_image_frame.pack(fill='x', pady=(0, 15))
         main_image_frame.pack_propagate(False)
 
         main_image_label = tk.Label(main_image_frame, text="Hình ảnh sản phẩm",
                                    font=('Arial', 14), bg='white', fg='#6c757d')
         main_image_label.pack(expand=True)
 
-        # Thumbnail gallery section
-        gallery_section = tk.Frame(detail_frame, bg='#f8f9fa')
-        gallery_section.pack(fill='x', padx=15, pady=(0, 10))
+        # Description area (below main image, more visible with better spacing)
+        desc_section = tk.Frame(image_section, bg='#f8f9fa', relief='solid', bd=1)
+        desc_section.pack(fill='x', pady=(0, 10))
+
+        tk.Label(desc_section, text="Mô tả sản phẩm:", font=('Arial', 12, 'bold'),
+                 bg='#f8f9fa').pack(anchor='w', pady=(5, 5), padx=5)
+
+        desc_text = tk.Text(desc_section, height=4, wrap='word', font=('Arial', 11),
+                           state='disabled', bg='white', relief='solid', bd=1)
+        desc_text.pack(fill='both', expand=True, padx=5, pady=(0, 5))
+
+        # Right side - Thumbnail gallery section (with better spacing)
+        gallery_section = tk.Frame(content_container, bg='#f8f9fa', width=120)
+        gallery_section.pack(side='right', fill='y', padx=(15, 0))
+        gallery_section.pack_propagate(False)
 
         tk.Label(gallery_section, text="Các ảnh khác:", font=('Arial', 12, 'bold'),
-                 bg='#f9f9fa').pack(anchor='w', pady=(0, 5))
+                 bg='#f8f9fa').pack(anchor='w', pady=(0, 10))
 
-        # Scrollable thumbnail container
-        thumbnail_frame = tk.Frame(gallery_section, bg='white', height=80, relief='solid', bd=1)
-        thumbnail_frame.pack(fill='x')
-        thumbnail_frame.pack_propagate(False)
+        # Scrollable thumbnail container (adjusted height)
+        thumbnail_frame = tk.Frame(gallery_section, bg='white', height=380, relief='solid', bd=1)
+        thumbnail_frame.pack(fill='both', expand=True)
 
-        # Canvas for scrolling thumbnails
-        thumbnail_canvas = tk.Canvas(thumbnail_frame, bg='white', height=78)
-        thumbnail_scrollbar = ttk.Scrollbar(thumbnail_frame, orient='horizontal', command=thumbnail_canvas.xview)
+        # Canvas for scrolling thumbnails (vertical scrolling now)
+        thumbnail_canvas = tk.Canvas(thumbnail_frame, bg='white')
+        thumbnail_scrollbar = ttk.Scrollbar(thumbnail_frame, orient='vertical', command=thumbnail_canvas.yview)
         thumbnail_scrollable = tk.Frame(thumbnail_canvas, bg='white')
 
         thumbnail_scrollable.bind("<Configure>",
                                  lambda e: thumbnail_canvas.configure(scrollregion=thumbnail_canvas.bbox("all")))
         thumbnail_canvas.create_window((0, 0), window=thumbnail_scrollable, anchor="nw")
-        thumbnail_canvas.configure(xscrollcommand=thumbnail_scrollbar.set)
+        thumbnail_canvas.configure(yscrollcommand=thumbnail_scrollbar.set)
 
-        thumbnail_canvas.pack(side='top', fill='both', expand=True)
-        thumbnail_scrollbar.pack(side='bottom', fill='x')
-
-        # Description area
-        desc_section = tk.Frame(detail_frame, bg='#f8f9fa')
-        desc_section.pack(fill='both', expand=True, padx=15, pady=(0, 15))
-
-        tk.Label(desc_section, text="Mô tả sản phẩm:", font=('Arial', 12, 'bold'),
-                 bg='#f9f9fa').pack(anchor='w', pady=(0, 5))
-
-        desc_text = tk.Text(desc_section, height=5, wrap='word', font=('Arial', 11),
-                           state='disabled', bg='white', relief='solid', bd=1)
-        desc_text.pack(fill='both', expand=True)
+        thumbnail_canvas.pack(side='left', fill='both', expand=True)
+        thumbnail_scrollbar.pack(side='right', fill='y')
 
         # Functions for handling images
         def show_main_image(image_url):
@@ -753,7 +951,7 @@ class ProductView:
 
             if not images:
                 tk.Label(thumbnail_scrollable, text="Không có ảnh khác",
-                       font=('Arial', 10), bg='white', fg='#6c757d').pack(side='left', padx=10, pady=20)
+                       font=('Arial', 10), bg='white', fg='#6c757d').pack(pady=20)
                 return
 
             for i, image_url in enumerate(images):
@@ -761,13 +959,13 @@ class ProductView:
                     # Load thumbnail image
                     thumb_img = load_thumbnail_image(image_url)
                     if thumb_img:
-                        # Create thumbnail button
+                        # Create thumbnail button - now arranged vertically and centered
                         thumb_btn = tk.Button(thumbnail_scrollable, image=thumb_img,
                                              command=lambda url=image_url: show_main_image(url),
                                              relief='solid', bd=2, cursor='hand2',
                                              bg='white', activebackground='#e9ecef')
                         thumb_btn.image = thumb_img  # Keep reference
-                        thumb_btn.pack(side='left', padx=3, pady=3)
+                        thumb_btn.pack(pady=3, padx=5, anchor='center')  # Added anchor='center'
 
                         # Hover effects
                         def on_enter(e, btn=thumb_btn):
@@ -779,21 +977,21 @@ class ProductView:
                         thumb_btn.bind("<Leave>", on_leave)
 
                     else:
-                        # Fallback button if can't load image
+                        # Fallback button if can't load image - also centered
                         thumb_btn = tk.Button(thumbnail_scrollable, text=f"Ảnh {i+1}",
                                              command=lambda url=image_url: show_main_image(url),
                                              width=8, height=4, cursor='hand2',
                                              relief='solid', bd=2, bg='white')
-                        thumb_btn.pack(side='left', padx=3, pady=3)
+                        thumb_btn.pack(pady=3, padx=5, anchor='center')  # Added anchor='center'
 
                 except Exception as e:
                     print(f"Error creating thumbnail {i+1}: {e}")
-                    # Create placeholder button
+                    # Create placeholder button - also centered
                     thumb_btn = tk.Button(thumbnail_scrollable, text=f"Ảnh {i+1}",
                                          command=lambda url=image_url: show_main_image(url),
                                          width=8, height=4, cursor='hand2',
                                          relief='solid', bd=2, bg='white')
-                    thumb_btn.pack(side='left', padx=3, pady=3)
+                    thumb_btn.pack(pady=3, padx=5, anchor='center')  # Added anchor='center'
 
         # Mouse wheel scroll for thumbnail canvas
         def on_mousewheel(event):

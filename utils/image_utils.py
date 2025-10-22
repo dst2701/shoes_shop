@@ -46,7 +46,7 @@ def load_image_safely(path_or_url):
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
 
-        image = image.resize((300, 300), Image.Resampling.LANCZOS)
+        image = image.resize((600, 600), Image.Resampling.LANCZOS)
         return ImageTk.PhotoImage(image)
 
     except Exception as e:

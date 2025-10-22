@@ -359,8 +359,23 @@ class InvoiceView:
                             'total': gia * so_luong
                         }
 
-                # Insert grouped items into cthoadon
+                # Insert grouped items into cthoadon and decrease product quantities
                 for item in grouped_items.values():
+                    # First check current stock before processing
+                    cursor.execute("SELECT SoLuong FROM sanpham WHERE MaSP = %s", (item['ma_sp'],))
+                    stock_result = cursor.fetchone()
+                    current_stock = stock_result[0] if stock_result else 0
+
+                    # Validate stock availability
+                    if current_stock < item['quantity']:
+                        conn.rollback()
+                        messagebox.showerror("Lỗi",
+                                           f"Không đủ hàng trong kho!\n"
+                                           f"Sản phẩm: {item['ten_sp']}\n"
+                                           f"Số lượng yêu cầu: {item['quantity']}\n"
+                                           f"Số lượng còn lại: {current_stock}")
+                        return
+
                     cursor.execute(
                         """
                         INSERT INTO cthoadon (MaHD, MaSP, TenSP, MauSac, Size, SoLuongMua, DonGia, ThanhTien)
@@ -369,6 +384,29 @@ class InvoiceView:
                         (ma_hd, item['ma_sp'], item['ten_sp'], item['color'], item['size'],
                          item['quantity'], item['price'], item['total'])
                     )
+
+                    # Decrease product quantity in sanpham table with explicit validation
+                    cursor.execute(
+                        """
+                        UPDATE sanpham 
+                        SET SoLuong = GREATEST(0, SoLuong - %s)
+                        WHERE MaSP = %s
+                        """,
+                        (item['quantity'], item['ma_sp'])
+                    )
+
+                    # Double-check that the update succeeded and quantity is not negative
+                    cursor.execute("SELECT SoLuong FROM sanpham WHERE MaSP = %s", (item['ma_sp'],))
+                    new_stock_result = cursor.fetchone()
+                    new_stock = new_stock_result[0] if new_stock_result else 0
+
+                    if new_stock < 0:
+                        # This should not happen with GREATEST function, but extra safety
+                        conn.rollback()
+                        messagebox.showerror("Lỗi",
+                                           f"Lỗi hệ thống: Số lượng sản phẩm bị âm!\n"
+                                           f"Sản phẩm: {item['ten_sp']}")
+                        return
 
                 # Clear cart from database after payment
                 cursor.execute("DELETE FROM giohangchuasanpham WHERE MaGH = %s", (ma_gh,))

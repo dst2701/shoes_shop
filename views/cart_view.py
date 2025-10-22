@@ -127,15 +127,16 @@ class CartView:
         header_frame_table.pack(fill='x', pady=(0, 2))
         header_frame_table.pack_propagate(False)
 
-        # Create header columns with consistent widths
+        # Create header columns with consistent widths - Updated to include MaSP
         header_cols = [
-            ("Tên sản phẩm", 0.25, 'w'),
-            ("Màu sắc", 0.12, 'center'),
+            ("Mã SP", 0.1, 'center'),
+            ("Tên sản phẩm", 0.22, 'w'),
+            ("Màu sắc", 0.11, 'center'),
             ("Size", 0.08, 'center'),
-            ("Số lượng", 0.12, 'center'),
-            ("Đơn giá", 0.15, 'e'),
-            ("Thành tiền", 0.15, 'e'),
-            ("Hành động", 0.13, 'center')
+            ("Số lượng", 0.11, 'center'),
+            ("Đơn giá", 0.13, 'e'),
+            ("Thành tiền", 0.13, 'e'),
+            ("Hành động", 0.12, 'center')
         ]
 
         for i, (text, width_ratio, anchor) in enumerate(header_cols):
@@ -197,13 +198,14 @@ class CartView:
 
             # Create row data with same width ratios as headers
             row_data = [
-                (product['name'], 0.25, 'w', 'text'),
-                (product['color'], 0.12, 'center', 'text'),
+                (product['product_id'], 0.1, 'center', 'text'),
+                (product['name'], 0.22, 'w', 'text'),
+                (product['color'], 0.11, 'center', 'text'),
                 (product['size'], 0.08, 'center', 'text'),
-                (str(product['quantity']), 0.12, 'center', 'text'),
-                (f"{product['price']:,.0f} VNĐ", 0.15, 'e', 'text'),
-                (f"{product['total']:,.0f} VNĐ", 0.15, 'e', 'price'),
-                ("", 0.13, 'center', 'button')
+                (str(product['quantity']), 0.11, 'center', 'text'),
+                (f"{product['price']:,.0f} VNĐ", 0.13, 'e', 'text'),
+                (f"{product['total']:,.0f} VNĐ", 0.13, 'e', 'price'),
+                ("", 0.12, 'center', 'button')
             ]
 
             for i, (content, width_ratio, anchor, content_type) in enumerate(row_data):
@@ -227,7 +229,7 @@ class CartView:
                     # Regular text labels
                     label = tk.Label(product_frame, text=content, font=('Arial', 11),
                                     bg='white', anchor=anchor)
-                    if content_type == 'text' and i == 0:  # Product name - add wrapping
+                    if content_type == 'text' and i == 1:  # Product name - add wrapping
                         label.config(wraplength=int(width_ratio * 800))  # Approximate wrapping width
                     label.place(relx=x_pos, rely=0, relwidth=width_ratio, relheight=1)
 
@@ -261,7 +263,7 @@ class CartView:
         btn_view_invoice.pack(side='right')
 
     def clear_cart_db(self, username, role="buyer", on_back_callback=None):
-        """Xóa toàn bộ giỏ hàng từ database"""
+        """Xóa toàn bộ giỏ hàng từ database - FIXED: không trả lại số lượng cho kho"""
         result = messagebox.askyesno("Xác nhận", "Bạn có chắc muốn xóa tất cả sản phẩm trong giỏ hàng?")
         if not result:
             return
@@ -285,11 +287,13 @@ class CartView:
 
             ma_gh = result[0]
 
-            # Xóa toàn bộ sản phẩm trong giỏ hàng từ database
+            # FIXED: Simply delete cart items without affecting product inventory
+            # Cart items are just "reserved" - they don't affect actual inventory until payment
             cursor.execute("DELETE FROM giohangchuasanpham WHERE MaGH = %s", (ma_gh,))
+
             conn.commit()
 
-            messagebox.showinfo("Thành công", "Đã xóa tất cả sản phẩm!")
+            messagebox.showinfo("Thành công", "Đã xóa tất cả sản phẩm khỏi giỏ hàng!")
             self.show_cart(username, role, on_back_callback)
 
         except Exception as e:
