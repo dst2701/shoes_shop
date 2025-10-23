@@ -89,7 +89,6 @@ set SHOP_DB_NAME=shopgiaydep09102025
 python main.py
 ```
 
-> Nếu bạn muốn, tôi có thể thay đổi `config/database.py` để sử dụng biến môi trường (an toàn hơn). Hãy xác nhận nếu bạn đồng ý.
 
 ## Database: các bảng quan trọng
 
