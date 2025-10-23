@@ -83,6 +83,12 @@ class ProductView:
             if conn:
                 conn.close()
 
+    def show_sales_view(self, role, username):
+        """Show sales statistics view"""
+        from views.sales_view import SalesView
+        sales_view = SalesView(self.root)
+        sales_view.show(role, username, lambda: self.show_shoes(role, username))
+
     def show_shoes(self, role=None, username=None):
         """Show product list - from main.py"""
         for widget in self.root.winfo_children():
@@ -189,6 +195,14 @@ class ProductView:
                               bg='#3498db', fg='white', font=('Arial', 12, 'bold'), padx=10)
         btn_search.pack(side='left', padx=5)
 
+        # Sales statistics button for sellers
+        if role == "seller":
+            btn_sales = tk.Button(search_container, text="📊 Doanh thu",
+                                 bg='#9b59b6', fg='white', font=('Arial', 12, 'bold'),
+                                 padx=15, pady=5, relief='flat', cursor='hand2',
+                                 command=lambda: self.show_sales_view(role, username))
+            btn_sales.pack(side='left', padx=10)
+
         # Filter frame
         filter_container = tk.Frame(search_frame, bg='#ecf0f1')
         filter_container.pack(side='right', fill='y', pady=10, padx=(0, 10))
@@ -227,9 +241,9 @@ class ProductView:
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            # Get product info with brand
+            # Get product info with brand and import date for discount calculation
             cursor.execute("""
-                SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, th.TenTH, sp.SoLuong
+                SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, th.TenTH, sp.SoLuong, sp.NgayNhapHang
                 FROM sanpham sp
                 LEFT JOIN thuonghieu th ON sp.MaTH = th.MaTH
                 ORDER BY sp.TenSP
@@ -290,8 +304,8 @@ class ProductView:
             tree.heading("Giá", text="Giá")
             tree.heading("SL", text="SL")
             tree.column("Mã SP", width=80)
-            tree.column("Tên", width=160)
-            tree.column("Giá", width=90, anchor='e')
+            tree.column("Tên", width=140)
+            tree.column("Giá", width=120, anchor='e')
             tree.column("SL", width=50, anchor='e')
         else:
             tree = ttk.Treeview(tree_frame, columns=("Mã SP", "Tên", "Giá"), show="headings", height=8, style="Custom.Treeview")
@@ -299,8 +313,8 @@ class ProductView:
             tree.heading("Tên", text="Tên giày")
             tree.heading("Giá", text="Giá")
             tree.column("Mã SP", width=80)
-            tree.column("Tên", width=180)
-            tree.column("Giá", width=110, anchor='e')
+            tree.column("Tên", width=160)
+            tree.column("Giá", width=130, anchor='e')
 
         scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
@@ -713,7 +727,7 @@ class ProductView:
             out_of_stock_count = 0
             low_stock_count = 0
 
-            for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong in all_products:
+            for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong, ngay_nhap_hang in all_products:
                 # Filter by search text - Updated to search both product code and name
                 if search_text and search_text not in ten_sp.lower() and search_text not in ma_sp.lower():
                     continue
@@ -734,7 +748,7 @@ class ProductView:
                     elif selected_price == "Trên 2tr" and price_val < 2000000:
                         continue
 
-                filtered_products.append((ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong))
+                filtered_products.append((ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong, ngay_nhap_hang))
 
                 # Count stock warnings for sellers
                 if role == "seller":
@@ -745,8 +759,43 @@ class ProductView:
 
             # Populate treeview with stock warnings for sellers
             product_data.clear()
-            for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong in filtered_products:
-                price_display = f"{float(gia):,.0f} VNĐ" if gia is not None else "N/A"
+            for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong, ngay_nhap_hang in filtered_products:
+                # Calculate discount based on import date (compare with current system date)
+                from datetime import datetime
+                discount_percent = 0
+
+                # Only apply discount if product has stock and import date exists
+                if ngay_nhap_hang and so_luong > 1:
+                    try:
+                        # Convert import date to datetime if needed
+                        import_date = ngay_nhap_hang if isinstance(ngay_nhap_hang, datetime) else datetime.strptime(str(ngay_nhap_hang), '%Y-%m-%d')
+
+                        # Get current system date
+                        current_date = datetime.now()
+
+                        # Calculate months difference
+                        months_old = (current_date.year - import_date.year) * 12 + (current_date.month - import_date.month)
+
+                        # Apply discount based on age
+                        if months_old >= 12:
+                            discount_percent = 15
+                        elif months_old >= 6:
+                            discount_percent = 10
+                    except Exception as e:
+                        print(f"Error calculating discount: {e}")
+                        pass
+
+                # Apply discount to price display with compact messaging
+                if gia is not None:
+                    original_price = float(gia)
+                    if discount_percent > 0:
+                        discounted_price = original_price * (1 - discount_percent / 100)
+                        price_display = f"{discounted_price:,.0f} VNĐ (-{discount_percent}%)"
+                    else:
+                        price_display = f"{original_price:,.0f} VNĐ"
+                else:
+                    price_display = "N/A"
+
                 if role == "seller":
                     # Add visual indicators for stock levels
                     if so_luong == 0:
@@ -766,7 +815,9 @@ class ProductView:
                     "price": price_display,
                     "description": (mo_ta or "Chưa có mô tả cho sản phẩm này.").strip(),
                     "images": product_images.get(ma_sp, []),
-                    "quantity": so_luong
+                    "quantity": so_luong,
+                    "discount": discount_percent,
+                    "original_price": float(gia) if gia else 0
                 }
 
             # Update status label with count and stock warnings
@@ -829,6 +880,18 @@ class ProductView:
                     else:
                         product_name_label.config(text=product["name"])
 
+                    # Update price with discount info
+                    if product['discount'] > 0:
+                        original_price = product['original_price']
+                        discounted_price = original_price * (1 - product['discount'] / 100)
+                        product_price_label.config(
+                            text=f"Giá: {discounted_price:,.0f} VNĐ (-{product['discount']}%)\n"
+                                 f"Giá gốc: {original_price:,.0f} VNĐ",
+                            fg='#e74c3c'
+                        )
+                    else:
+                        product_price_label.config(text=product['price'], fg='#27ae60')
+
                     # Update description
                     desc_text.config(state='normal')
                     desc_text.delete(1.0, tk.END)
@@ -863,7 +926,12 @@ class ProductView:
         # Product name
         product_name_label = tk.Label(detail_frame, text="Chọn sản phẩm để xem chi tiết",
                                       font=('Arial', 18, 'bold'), bg='#f8f9fa', fg='#2c3e50')
-        product_name_label.pack(pady=(15, 10))
+        product_name_label.pack(pady=(15, 5))
+
+        # Price label (with discount if applicable)
+        product_price_label = tk.Label(detail_frame, text="",
+                                       font=('Arial', 16, 'bold'), bg='#f8f9fa', fg='#27ae60')
+        product_price_label.pack(pady=(0, 10))
 
         # Create horizontal container for image and gallery
         content_container = tk.Frame(detail_frame, bg='#f8f9fa')
@@ -873,8 +941,8 @@ class ProductView:
         image_section = tk.Frame(content_container, bg='#f8f9fa')
         image_section.pack(side='left', fill='both', expand=True, padx=(0, 15))
 
-        # Main image display area (reduced height to prevent overlap)
-        main_image_frame = tk.Frame(image_section, bg='white', relief='solid', bd=1, height=500)
+        # Main image display area (reduced height to accommodate wider price column)
+        main_image_frame = tk.Frame(image_section, bg='white', relief='solid', bd=1, height=450)
         main_image_frame.pack(fill='x', pady=(0, 15))
         main_image_frame.pack_propagate(False)
 
@@ -1004,7 +1072,7 @@ class ProductView:
         # Create add product window
         add_window = tk.Toplevel(self.root)
         add_window.title("Thêm sản phẩm mới")
-        add_window.geometry("500x650")  # Increased height from 600 to 650
+        add_window.geometry("500x720")  # Increased height to accommodate import date field
         add_window.resizable(False, False)
         add_window.grab_set()  # Make window modal
 
@@ -1056,6 +1124,11 @@ class ProductView:
         entry_quantity = tk.Entry(main_container, font=('Arial', 12), width=40)
         entry_quantity.pack(padx=10, pady=(0, 8))
 
+        # Import Date (NgayNhapHang)
+        tk.Label(main_container, text="Ngày nhập hàng (YYYY-MM-DD):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        entry_import_date = tk.Entry(main_container, font=('Arial', 12), width=40)
+        entry_import_date.pack(padx=10, pady=(0, 8))
+
         # Description
         tk.Label(main_container, text="Mô tả:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
         text_description = tk.Text(main_container, font=('Arial', 11), width=42, height=5, wrap='word')  # Reduced height from 6 to 5
@@ -1076,6 +1149,7 @@ class ProductView:
             price_str = entry_price.get().strip()
             brand_selection = brand_var_add.get()
             quantity_str = entry_quantity.get().strip()
+            import_date_str = entry_import_date.get().strip()
             description = text_description.get(1.0, tk.END).strip()
             image_urls = text_images.get(1.0, tk.END).strip()
 
@@ -1091,6 +1165,14 @@ class ProductView:
                 quantity = int(quantity_str)
                 if quantity < 0:
                     raise ValueError("Số lượng phải >= 0")
+
+                # Validate import date format if provided
+                if import_date_str:
+                    from datetime import datetime
+                    try:
+                        datetime.strptime(import_date_str, '%Y-%m-%d')
+                    except ValueError:
+                        raise ValueError("Ngày nhập hàng phải theo định dạng YYYY-MM-DD")
             except ValueError as e:
                 messagebox.showerror("Lỗi", f"Dữ liệu không hợp lệ: {str(e)}")
                 return
@@ -1115,11 +1197,12 @@ class ProductView:
                 next_number = ((result[0] or 0) + 1) if result and result[0] is not None else 1
                 product_id = f"SP{next_number:03d}"
 
-                # Insert product
+                # Insert product with import date
                 cursor.execute("""
-                    INSERT INTO sanpham (MaSP, TenSP, Gia, MoTa, MaTH, SoLuong)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (product_id, name, price, description if description else None, brand_id, quantity))
+                    INSERT INTO sanpham (MaSP, TenSP, Gia, MoTa, MaTH, SoLuong, NgayNhapHang)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (product_id, name, price, description if description else None, brand_id, quantity,
+                      import_date_str if import_date_str else None))
 
                 # Insert image URLs if provided
                 if image_urls:
@@ -1164,7 +1247,7 @@ class ProductView:
 
             # Get product details
             cursor.execute("""
-                SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, sp.MaTH, sp.SoLuong, th.TenTH
+                SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, sp.MaTH, sp.SoLuong, th.TenTH, sp.NgayNhapHang
                 FROM sanpham sp
                 LEFT JOIN thuonghieu th ON sp.MaTH = th.MaTH
                 WHERE sp.MaSP = %s
@@ -1182,7 +1265,8 @@ class ProductView:
                 'description': result[3] or "",
                 'brand_id': result[4],
                 'quantity': result[5],
-                'brand_name': result[6]
+                'brand_name': result[6],
+                'import_date': result[7].strftime('%Y-%m-%d') if result[7] else ''
             }
 
             # Get product images
@@ -1201,7 +1285,7 @@ class ProductView:
         # Create edit product window
         edit_window = tk.Toplevel(self.root)
         edit_window.title(f"Sửa sản phẩm: {current_data['name']}")
-        edit_window.geometry("500x650")
+        edit_window.geometry("500x720")
         edit_window.resizable(False, False)
         edit_window.grab_set()  # Make window modal
 
@@ -1263,6 +1347,12 @@ class ProductView:
         entry_quantity.insert(0, str(current_data['quantity']))
         entry_quantity.pack(padx=10, pady=(0, 8))
 
+        # Import Date (NgayNhapHang)
+        tk.Label(main_container, text="Ngày nhập hàng (YYYY-MM-DD):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        entry_import_date = tk.Entry(main_container, font=('Arial', 12), width=40)
+        entry_import_date.insert(0, current_data['import_date'])
+        entry_import_date.pack(padx=10, pady=(0, 8))
+
         # Description
         tk.Label(main_container, text="Mô tả:", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
         text_description = tk.Text(main_container, font=('Arial', 11), width=42, height=5, wrap='word')
@@ -1286,6 +1376,7 @@ class ProductView:
             price_str = entry_price.get().strip()
             brand_selection = brand_var_edit.get()
             quantity_str = entry_quantity.get().strip()
+            import_date_str = entry_import_date.get().strip()
             description = text_description.get(1.0, tk.END).strip()
             image_urls = text_images.get(1.0, tk.END).strip()
 
@@ -1301,6 +1392,14 @@ class ProductView:
                 quantity = int(quantity_str)
                 if quantity < 0:
                     raise ValueError("Số lượng phải >= 0")
+
+                # Validate import date format if provided
+                if import_date_str:
+                    from datetime import datetime
+                    try:
+                        datetime.strptime(import_date_str, '%Y-%m-%d')
+                    except ValueError:
+                        raise ValueError("Ngày nhập hàng phải theo định dạng YYYY-MM-DD")
             except ValueError as e:
                 messagebox.showerror("Lỗi", f"Dữ liệu không hợp lệ: {str(e)}")
                 return
@@ -1319,12 +1418,13 @@ class ProductView:
                 conn = get_db_connection()
                 cursor = conn.cursor()
 
-                # Update product
+                # Update product with import date
                 cursor.execute("""
                     UPDATE sanpham 
-                    SET TenSP = %s, Gia = %s, MoTa = %s, MaTH = %s, SoLuong = %s
+                    SET TenSP = %s, Gia = %s, MoTa = %s, MaTH = %s, SoLuong = %s, NgayNhapHang = %s
                     WHERE MaSP = %s
-                """, (name, price, description if description else None, brand_id, quantity, product_id))
+                """, (name, price, description if description else None, brand_id, quantity,
+                      import_date_str if import_date_str else None, product_id))
 
                 # Delete old images
                 cursor.execute("DELETE FROM url_sp WHERE MaSP = %s", (product_id,))
