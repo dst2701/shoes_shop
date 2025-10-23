@@ -129,9 +129,3 @@ python main.py
 
 - Không commit mật khẩu DB vào git. Sử dụng biến môi trường hoặc file cấu hình riêng (không theo dõi trong git).
 
-## Tiếp theo (tùy chọn)
-
-- Tôi có thể:
-  - Thay `config/database.py` dùng biến môi trường cho an toàn
-  - Tạo `requirements.txt` tự động từ môi trường hiện tại
-  - Di chuyển các phần view từ `main.py` sang `views/` (refactor) — bạn đã yêu cầu trước đó; tôi có thể triển khai theo từng bước và chạy test
