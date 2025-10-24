@@ -2,13 +2,13 @@
 Product View - matches main.py structure exactly
 """
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, filedialog
 from PIL import Image, ImageTk
 import urllib.request
 import io
 import os
 from config.database import get_db_connection, BASE_DIR, LOCAL_IMAGE_DIR
-from utils.image_utils import load_image_safely, load_thumbnail_image
+from utils.image_utils import load_image_safely, load_thumbnail_image, save_uploaded_image, insert_uploaded_image_to_db
 
 class ProductView:
     def __init__(self, root):
@@ -246,7 +246,7 @@ class ProductView:
                 SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, th.TenTH, sp.SoLuong, sp.NgayNhapHang
                 FROM sanpham sp
                 LEFT JOIN thuonghieu th ON sp.MaTH = th.MaTH
-                ORDER BY sp.TenSP
+                ORDER BY sp.MaSP
             """)
             all_products = cursor.fetchall()
 
@@ -1072,7 +1072,7 @@ class ProductView:
         # Create add product window
         add_window = tk.Toplevel(self.root)
         add_window.title("Thêm sản phẩm mới")
-        add_window.geometry("500x720")  # Increased height to accommodate import date field
+        add_window.geometry("600x650")  # Increased width and height for better visibility
         add_window.resizable(False, False)
         add_window.grab_set()  # Make window modal
 
@@ -1080,9 +1080,41 @@ class ProductView:
         add_window.transient(self.root)
         add_window.focus()
 
-        # Create main container with scrollbar in case content is too long
-        main_container = tk.Frame(add_window)
-        main_container.pack(fill='both', expand=True, padx=10, pady=10)
+        # Unbind mousewheel when window closes
+        def on_closing():
+            add_window.unbind_all("<MouseWheel>")
+            add_window.destroy()
+
+        add_window.protocol("WM_DELETE_WINDOW", on_closing)
+
+        # IMPORTANT: Pack button frame FIRST to reserve space at bottom
+        button_frame = tk.Frame(add_window, bg='#f0f0f0', relief='ridge', bd=1)
+        button_frame.pack(side='bottom', fill='x', padx=10, pady=10)
+
+        # Create canvas with scrollbar for scrollable content
+        canvas = tk.Canvas(add_window, bg='white')
+        scrollbar = tk.Scrollbar(add_window, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg='white')
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack canvas and scrollbar - they will fill remaining space above buttons
+        canvas.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
+        scrollbar.pack(side="right", fill="y", pady=10)
+
+        # Use scrollable_frame as main_container
+        main_container = scrollable_frame
+
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        add_window.bind_all("<MouseWheel>", _on_mousewheel)
 
         # Form fields
         tk.Label(main_container, text="THÊM SẢN PHẨM MỚI", font=('Arial', 16, 'bold'), fg='#2c3e50').pack(pady=(10, 20))
@@ -1136,12 +1168,43 @@ class ProductView:
 
         # Image URLs
         tk.Label(main_container, text="URL hình ảnh (mỗi URL một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
-        text_images = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')  # Reduced height from 4 to 3
-        text_images.pack(padx=10, pady=(0, 15))
+        text_images = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')
+        text_images.pack(padx=10, pady=(0, 8))
 
-        # Buttons frame - ensure it's always visible
-        button_frame = tk.Frame(main_container, bg='#f0f0f0', relief='ridge', bd=1)
-        button_frame.pack(fill='x', pady=(10, 10))
+        # Image Upload Section
+        upload_frame = tk.Frame(main_container)
+        upload_frame.pack(fill='x', padx=10, pady=(5, 8))
+
+        tk.Label(upload_frame, text="Hoặc tải ảnh từ thiết bị:", font=('Arial', 11, 'bold')).pack(anchor='w')
+
+        # Store uploaded image filenames temporarily
+        uploaded_images = []
+
+        upload_btn_frame = tk.Frame(upload_frame)
+        upload_btn_frame.pack(anchor='w', pady=(5, 0))
+
+        def upload_image():
+            filetypes = [("Image files", "*.png *.jpg *.jpeg *.gif *.bmp"), ("All files", "*.*")]
+            file_path = filedialog.askopenfilename(parent=add_window, title="Chọn hình ảnh", filetypes=filetypes)
+            if file_path:
+                try:
+                    # Save to local directory
+                    filename = save_uploaded_image(file_path)
+                    uploaded_images.append(filename)
+                    # Update label to show count
+                    upload_count_label.config(text=f"Đã chọn: {len(uploaded_images)} ảnh", fg='#27ae60')
+                    messagebox.showinfo("Thành công", f"Đã thêm ảnh: {os.path.basename(file_path)}")
+                except Exception as e:
+                    messagebox.showerror("Lỗi", f"Không thể tải ảnh: {str(e)}")
+
+        tk.Button(upload_btn_frame, text="📁 Chọn ảnh từ máy", command=upload_image,
+                 bg='#3498db', fg='white', font=('Arial', 10, 'bold'),
+                 padx=10, pady=5, cursor='hand2').pack(side='left')
+
+        upload_count_label = tk.Label(upload_btn_frame, text="Chưa chọn ảnh nào",
+                                      font=('Arial', 10), fg='#7f8c8d')
+        upload_count_label.pack(side='left', padx=(10, 0))
+
 
         def save_product():
             # Get form data
@@ -1210,8 +1273,13 @@ class ProductView:
                     for url in urls:
                         cursor.execute("INSERT INTO url_sp (MaSP, URLAnh) VALUES (%s, %s)", (product_id, url))
 
+                # Insert uploaded images
+                for filename in uploaded_images:
+                    cursor.execute("INSERT INTO url_sp (MaSP, URLAnh) VALUES (%s, %s)", (product_id, filename))
+
                 conn.commit()
-                messagebox.showinfo("Thành công", f"Đã thêm sản phẩm '{name}' thành công!")
+                total_images = len([url.strip() for url in image_urls.split('\n') if url.strip()]) + len(uploaded_images)
+                messagebox.showinfo("Thành công", f"Đã thêm sản phẩm '{name}' với {total_images} ảnh thành công!")
                 add_window.destroy()
 
                 # Refresh the product list
@@ -1225,13 +1293,13 @@ class ProductView:
                 if conn:
                     conn.close()
 
-        # Action buttons with better visibility
+        # Action buttons with proper colors and positions
         tk.Button(button_frame, text="💾 Lưu", command=save_product,
                  bg='#27ae60', fg='white', font=('Arial', 12, 'bold'),
-                 padx=25, pady=10).pack(side='left', padx=15, pady=10)
-        tk.Button(button_frame, text="❌ Hủy", command=add_window.destroy,
-                 bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'),
-                 padx=25, pady=10).pack(side='right', padx=15, pady=10)
+                 padx=30, pady=10, cursor='hand2').pack(side='left', padx=15, pady=10)
+        tk.Button(button_frame, text="❌ Hủy", command=on_closing,
+                 bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
+                 padx=30, pady=10, cursor='hand2').pack(side='right', padx=15, pady=10)
 
     def show_edit_product_form(self, product_id, role, username):
         """Show edit product form with current data loaded"""
@@ -1285,7 +1353,7 @@ class ProductView:
         # Create edit product window
         edit_window = tk.Toplevel(self.root)
         edit_window.title(f"Sửa sản phẩm: {current_data['name']}")
-        edit_window.geometry("500x720")
+        edit_window.geometry("600x650")  # Increased width and height for better visibility
         edit_window.resizable(False, False)
         edit_window.grab_set()  # Make window modal
 
@@ -1293,9 +1361,41 @@ class ProductView:
         edit_window.transient(self.root)
         edit_window.focus()
 
-        # Create main container
-        main_container = tk.Frame(edit_window)
-        main_container.pack(fill='both', expand=True, padx=10, pady=10)
+        # Unbind mousewheel when window closes
+        def on_closing():
+            edit_window.unbind_all("<MouseWheel>")
+            edit_window.destroy()
+
+        edit_window.protocol("WM_DELETE_WINDOW", on_closing)
+
+        # IMPORTANT: Pack button frame FIRST to reserve space at bottom
+        button_frame = tk.Frame(edit_window, bg='#f0f0f0', relief='ridge', bd=1)
+        button_frame.pack(side='bottom', fill='x', padx=10, pady=10)
+
+        # Create canvas with scrollbar for scrollable content
+        canvas = tk.Canvas(edit_window, bg='white')
+        scrollbar = tk.Scrollbar(edit_window, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg='white')
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack canvas and scrollbar - they will fill remaining space above buttons
+        canvas.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=10)
+        scrollbar.pack(side="right", fill="y", pady=10)
+
+        # Use scrollable_frame as main_container
+        main_container = scrollable_frame
+
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        edit_window.bind_all("<MouseWheel>", _on_mousewheel)
 
         # Form fields
         tk.Label(main_container, text=f"SỬA SẢN PHẨM: {current_data['name']}",
@@ -1364,11 +1464,42 @@ class ProductView:
         text_images = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')
         if current_images:
             text_images.insert(1.0, '\n'.join(current_images))
-        text_images.pack(padx=10, pady=(0, 15))
+        text_images.pack(padx=10, pady=(0, 8))
 
-        # Buttons frame
-        button_frame = tk.Frame(main_container, bg='#f0f0f0', relief='ridge', bd=1)
-        button_frame.pack(fill='x', pady=(10, 10))
+        # Image Upload Section
+        upload_frame = tk.Frame(main_container)
+        upload_frame.pack(fill='x', padx=10, pady=(5, 8))
+
+        tk.Label(upload_frame, text="Hoặc tải ảnh từ thiết bị:", font=('Arial', 11, 'bold')).pack(anchor='w')
+
+        # Store uploaded image filenames temporarily
+        uploaded_images = []
+
+        upload_btn_frame = tk.Frame(upload_frame)
+        upload_btn_frame.pack(anchor='w', pady=(5, 0))
+
+        def upload_image():
+            filetypes = [("Image files", "*.png *.jpg *.jpeg *.gif *.bmp"), ("All files", "*.*")]
+            file_path = filedialog.askopenfilename(parent=edit_window, title="Chọn hình ảnh", filetypes=filetypes)
+            if file_path:
+                try:
+                    # Save to local directory
+                    filename = save_uploaded_image(file_path)
+                    uploaded_images.append(filename)
+                    # Update label to show count
+                    upload_count_label.config(text=f"Đã chọn: {len(uploaded_images)} ảnh mới", fg='#27ae60')
+                    messagebox.showinfo("Thành công", f"Đã thêm ảnh: {os.path.basename(file_path)}")
+                except Exception as e:
+                    messagebox.showerror("Lỗi", f"Không thể tải ảnh: {str(e)}")
+
+        tk.Button(upload_btn_frame, text="📁 Chọn ảnh từ máy", command=upload_image,
+                 bg='#3498db', fg='white', font=('Arial', 10, 'bold'),
+                 padx=10, pady=5, cursor='hand2').pack(side='left')
+
+        upload_count_label = tk.Label(upload_btn_frame, text="Chưa chọn ảnh mới nào",
+                                      font=('Arial', 10), fg='#7f8c8d')
+        upload_count_label.pack(side='left', padx=(10, 0))
+
 
         def update_product():
             # Get form data
@@ -1435,8 +1566,13 @@ class ProductView:
                     for url in urls:
                         cursor.execute("INSERT INTO url_sp (MaSP, URLAnh) VALUES (%s, %s)", (product_id, url))
 
+                # Insert uploaded images
+                for filename in uploaded_images:
+                    cursor.execute("INSERT INTO url_sp (MaSP, URLAnh) VALUES (%s, %s)", (product_id, filename))
+
                 conn.commit()
-                messagebox.showinfo("Thành công", f"Đã cập nhật sản phẩm '{name}' thành công!")
+                total_images = len([url.strip() for url in image_urls.split('\n') if url.strip()]) + len(uploaded_images)
+                messagebox.showinfo("Thành công", f"Đã cập nhật sản phẩm '{name}' với {total_images} ảnh thành công!")
                 edit_window.destroy()
 
                 # Refresh the product list
@@ -1450,13 +1586,13 @@ class ProductView:
                 if conn:
                     conn.close()
 
-        # Action buttons
-        tk.Button(button_frame, text="💾 Cập nhật", command=update_product,
+        # Action buttons with proper colors and positions
+        tk.Button(button_frame, text="✏️ Cập nhật", command=update_product,
                  bg='#f39c12', fg='white', font=('Arial', 12, 'bold'),
-                 padx=25, pady=10).pack(side='left', padx=15, pady=10)
-        tk.Button(button_frame, text="❌ Hủy", command=edit_window.destroy,
-                 bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'),
-                 padx=25, pady=10).pack(side='right', padx=15, pady=10)
+                 padx=30, pady=10, cursor='hand2').pack(side='left', padx=15, pady=10)
+        tk.Button(button_frame, text="❌ Hủy", command=on_closing,
+                 bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
+                 padx=30, pady=10, cursor='hand2').pack(side='right', padx=15, pady=10)
 
     def show_brand_management(self, role, username):
         """Show brand management interface for sellers"""

@@ -5,6 +5,8 @@ from PIL import Image, ImageTk
 import urllib.request
 import io
 import os
+import shutil
+import uuid
 from config.database import BASE_DIR, LOCAL_IMAGE_DIR
 
 def load_image_safely(path_or_url):
@@ -99,3 +101,41 @@ def load_thumbnail_image(path_or_url):
     except Exception as e:
         print(f"Lỗi tải thumbnail từ {source}: {e}")
         return None
+
+def ensure_local_image_dir():
+    """Ensure the local image directory exists"""
+    os.makedirs(LOCAL_IMAGE_DIR, exist_ok=True)
+
+def generate_unique_filename(original_path):
+    """Generate a unique filename with the same extension as the original"""
+    ext = os.path.splitext(original_path)[1].lower()
+    return f"{uuid.uuid4().hex}{ext}"
+
+def save_uploaded_image(source_path):
+    """
+    Copy the selected file to LOCAL_IMAGE_DIR with a unique filename.
+    Returns the stored filename (relative). Raises exception on error.
+    """
+    ensure_local_image_dir()
+    filename = generate_unique_filename(source_path)
+    dest = os.path.join(LOCAL_IMAGE_DIR, filename)
+    shutil.copy2(source_path, dest)
+    return filename  # This will be stored in url_sp.URLAnh
+
+def insert_uploaded_image_to_db(db_conn, ma_sp, stored_filename):
+    """
+    Insert a new row into url_sp table.
+    db_conn is a database connection with cursor() and commit().
+    """
+    sql = "INSERT INTO `url_sp` (`MaSP`, `URLAnh`) VALUES (%s, %s)"
+    cursor = db_conn.cursor()
+    try:
+        cursor.execute(sql, (ma_sp, stored_filename))
+        db_conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error inserting image record: {e}")
+        return False
+    finally:
+        cursor.close()
+
