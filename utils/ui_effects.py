@@ -17,22 +17,17 @@ def add_button_hover_effect(button, original_bg, hover_bg, original_fg='white', 
         lift_amount: Pixels to lift button on hover
         scale: Scale factor for button on hover (slight zoom effect)
     """
-    original_cursor = button['cursor']
-    original_relief = button['relief']
+    original_cursor = button['cursor'] if 'cursor' in button.keys() else 'arrow'
+    original_relief = button['relief'] if 'relief' in button.keys() else 'flat'
 
     def on_enter(e):
-        """Handle mouse enter event"""
+        """Handle mouse enter event - NO border change to prevent size shift"""
         button.config(
             bg=hover_bg,
             fg=hover_fg,
             relief='raised',
             cursor='hand2'
         )
-        # Add slight shadow effect by adjusting border
-        try:
-            button.config(bd=3)
-        except:
-            pass
 
     def on_leave(e):
         """Handle mouse leave event"""
@@ -42,11 +37,6 @@ def add_button_hover_effect(button, original_bg, hover_bg, original_fg='white', 
             relief=original_relief,
             cursor=original_cursor
         )
-        # Reset border
-        try:
-            button.config(bd=2)
-        except:
-            pass
 
     # Bind events
     button.bind("<Enter>", on_enter)

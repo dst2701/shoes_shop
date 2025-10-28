@@ -1775,6 +1775,8 @@ class ProductView:
                                  padx=15, pady=8, relief='raised',
                                  cursor='hand2', bd=2)
         btn_add_brand.pack(side='right')
+        # Add hover effect
+        add_button_hover_effect(btn_add_brand, '#27ae60', get_hover_color('#27ae60'))
 
         # Status label
         status_brand_label = tk.Label(button_frame, text="Chọn thương hiệu để xóa",
@@ -1816,6 +1818,7 @@ class ProductView:
             if selection:
                 selected_brand_id = selection[0]
                 btn_delete_brand.config(state='normal', bg='#e74c3c')
+                add_button_hover_effect(btn_delete_brand, '#e74c3c', get_hover_color('#e74c3c'))
                 status_brand_label.config(text="Click để xóa thương hiệu đã chọn", fg='red')
             else:
                 selected_brand_id = None

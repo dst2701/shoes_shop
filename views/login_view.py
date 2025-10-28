@@ -4,6 +4,7 @@ Login and Registration View - matches main.py structure exactly
 import tkinter as tk
 from tkinter import messagebox
 from models.user import authenticate_user, register_user
+from utils.ui_effects import add_button_hover_effect, get_hover_color
 
 class LoginView:
     def __init__(self, root):
@@ -150,13 +151,17 @@ class LoginView:
 
         btn_login = tk.Button(btn_frame, text="Đăng nhập", command=self.login,
                              bg='#3498db', fg='white', font=('Arial', 15, 'bold'),
-                             width=15, height=2, relief='flat')
+                             width=15, height=2, relief='raised', bd=2, cursor='hand2')
         btn_login.pack(pady=(0, 10))
+        # Add hover effect
+        add_button_hover_effect(btn_login, '#3498db', get_hover_color('#3498db'))
 
         btn_register_link = tk.Button(btn_frame, text="Đăng ký tài khoản", command=self.show_register,
                                      bg='#27ae60', fg='white', font=('Arial', 15, 'bold'),
-                                     width=15, height=2, relief='flat')
+                                     width=15, height=2, relief='raised', bd=2, cursor='hand2')
         btn_register_link.pack()
+        # Add hover effect
+        add_button_hover_effect(btn_register_link, '#27ae60', get_hover_color('#27ae60'))
 
         def on_enter(event):
             self.login()
@@ -253,13 +258,17 @@ class LoginView:
 
         btn_register = tk.Button(btn_frame, text="ĐĂNG KÝ", command=self.register,
                                 bg='#27ae60', fg='white', font=('Arial', 14, 'bold'),
-                                width=15, height=2, relief='flat', cursor='hand2')
+                                width=15, height=2, relief='raised', cursor='hand2', bd=2)
         btn_register.pack(pady=(0, 8))
+        # Add hover effect
+        add_button_hover_effect(btn_register, '#27ae60', get_hover_color('#27ae60'))
 
         btn_back = tk.Button(btn_frame, text="HỦY BỎ", command=self.show_login,
                             bg='#e74c3c', fg='white', font=('Arial', 14, 'bold'),
-                            width=15, height=2, relief='flat', cursor='hand2')
+                            width=15, height=2, relief='raised', cursor='hand2', bd=2)
         btn_back.pack()
+        # Add hover effect
+        add_button_hover_effect(btn_back, '#e74c3c', get_hover_color('#e74c3c'))
 
         # Focus và bind Enter
         self.reg_entry_user.focus()
