@@ -4,6 +4,7 @@ Cart View - matches main.py structure exactly
 import tkinter as tk
 from tkinter import messagebox
 from config.database import get_db_connection
+from utils.ui_effects import add_button_hover_effect, get_hover_color
 
 class CartView:
     def __init__(self, root):
@@ -29,15 +30,19 @@ class CartView:
 
         btn_back = tk.Button(header_container, text="← Quay lại",
                             command=lambda: on_back_callback(role, username) if on_back_callback else None,
-                            bg='#f39c12', fg='white', relief='flat',
-                            font=('Arial', 12, 'bold'), padx=15, pady=5)
+                            bg='#f39c12', fg='white', relief='raised',
+                            font=('Arial', 12, 'bold'), padx=15, pady=5, cursor='hand2', bd=2)
         btn_back.pack(side='right', pady=15, padx=(0, 10))
+        # Add hover effect
+        add_button_hover_effect(btn_back, '#f39c12', get_hover_color('#f39c12'))
 
         btn_logout = tk.Button(header_container, text="Đăng xuất",
                               command=lambda: self.logout_callback() if hasattr(self, 'logout_callback') else None,
-                              bg='#e74c3c', fg='white', relief='flat',
-                              font=('Arial', 15), padx=15, pady=5)
+                              bg='#e74c3c', fg='white', relief='raised',
+                              font=('Arial', 15), padx=15, pady=5, cursor='hand2', bd=2)
         btn_logout.pack(side='right', pady=15)
+        # Add hover effect
+        add_button_hover_effect(btn_logout, '#e74c3c', get_hover_color('#e74c3c'))
 
         if username:
             tk.Label(header_container, text=f"Khách hàng: {username}",
@@ -212,14 +217,16 @@ class CartView:
                 x_pos = sum(col[1] for col in row_data[:i])
 
                 if content_type == 'button':
-                    # Remove button
+                    # Remove button with hover effect
                     btn_remove = tk.Button(product_frame, text="🗑️",
                                           command=lambda pid=product['product_id'], color=product['color'],
                                           size=product['size']: remove_from_cart_db(pid, color, size),
                                           bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
-                                          cursor='hand2', relief='flat', width=6, height=1)
+                                          cursor='hand2', relief='raised', width=6, height=1, bd=2)
                     btn_remove.place(relx=x_pos + (width_ratio - 0.08)/2, rely=0.2,
                                     relwidth=0.08, relheight=0.6)
+                    # Add hover effect
+                    add_button_hover_effect(btn_remove, '#e74c3c', get_hover_color('#e74c3c'))
                 elif content_type == 'price':
                     # Price labels with special formatting
                     price_label = tk.Label(product_frame, text=content, font=('Arial', 11, 'bold'),
@@ -253,14 +260,18 @@ class CartView:
         btn_clear = tk.Button(button_frame, text="🗑️ Xóa tất cả",
                              command=lambda: self.clear_cart_db(username, role, on_back_callback),
                              bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
-                             padx=20, pady=10, relief='flat', cursor='hand2')
+                             padx=20, pady=10, relief='raised', cursor='hand2', bd=2)
         btn_clear.pack(side='left')
+        # Add hover effect
+        add_button_hover_effect(btn_clear, '#e74c3c', get_hover_color('#e74c3c'))
 
         btn_view_invoice = tk.Button(button_frame, text="📄 Xem hóa đơn",
                                command=lambda: self.view_invoice_from_cart_db(username, role, cart_products, total_amount, on_back_callback),
                                bg='#f39c12', fg='white', font=('Arial', 12, 'bold'),
-                               padx=20, pady=10, relief='flat', cursor='hand2')
+                               padx=20, pady=10, relief='raised', cursor='hand2', bd=2)
         btn_view_invoice.pack(side='right')
+        # Add hover effect
+        add_button_hover_effect(btn_view_invoice, '#f39c12', get_hover_color('#f39c12'))
 
     def clear_cart_db(self, username, role="buyer", on_back_callback=None):
         """Xóa toàn bộ giỏ hàng từ database - FIXED: không trả lại số lượng cho kho"""

@@ -9,6 +9,7 @@ import io
 import os
 from config.database import get_db_connection, BASE_DIR, LOCAL_IMAGE_DIR
 from utils.image_utils import load_image_safely, load_thumbnail_image, save_uploaded_image, insert_uploaded_image_to_db
+from utils.ui_effects import add_button_hover_effect, COLORS, get_hover_color
 
 class ProductView:
     def __init__(self, root):
@@ -158,8 +159,10 @@ class ProductView:
             btn_cart = tk.Button(header_container, text=update_cart_button(),
                                 command=lambda: self.show_cart_callback(username, role) if hasattr(self, 'show_cart_callback') else None,
                                 bg='#f39c12', fg='white', relief='flat',
-                                font=('Arial', 12, 'bold'), padx=15, pady=5)
+                                font=('Arial', 12, 'bold'), padx=15, pady=5, cursor='hand2', bd=2)
             btn_cart.pack(side='right', pady=15, padx=(0, 10))
+            # Add hover effect
+            add_button_hover_effect(btn_cart, '#f39c12', get_hover_color('#f39c12'))
         else:
             # No product management button in header for sellers anymore
             pass
@@ -167,8 +170,10 @@ class ProductView:
         btn_logout = tk.Button(header_container, text="Đăng xuất",
                               command=lambda: self.logout_callback() if hasattr(self, 'logout_callback') else None,
                               bg='#e74c3c', fg='white', relief='flat',
-                              font=('Arial', 15), padx=15, pady=5)
+                              font=('Arial', 15), padx=15, pady=5, cursor='hand2', bd=2)
         btn_logout.pack(side='right', pady=15)
+        # Add hover effect
+        add_button_hover_effect(btn_logout, '#e74c3c', get_hover_color('#e74c3c'))
 
         if username:
             role_label = "Người bán" if role == "seller" else "Khách hàng"
@@ -192,16 +197,21 @@ class ProductView:
         search_entry.pack(side='left', padx=5)
 
         btn_search = tk.Button(search_container, text="🔍",
-                              bg='#3498db', fg='white', font=('Arial', 12, 'bold'), padx=10)
+                              bg='#3498db', fg='white', font=('Arial', 12, 'bold'),
+                              padx=10, cursor='hand2', relief='raised', bd=2)
         btn_search.pack(side='left', padx=5)
+        # Add hover effect
+        add_button_hover_effect(btn_search, '#3498db', get_hover_color('#3498db'))
 
         # Sales statistics button for sellers
         if role == "seller":
             btn_sales = tk.Button(search_container, text="📊 Doanh thu",
                                  bg='#9b59b6', fg='white', font=('Arial', 12, 'bold'),
-                                 padx=15, pady=5, relief='flat', cursor='hand2',
+                                 padx=15, pady=5, relief='raised', cursor='hand2', bd=2,
                                  command=lambda: self.show_sales_view(role, username))
             btn_sales.pack(side='left', padx=10)
+            # Add hover effect
+            add_button_hover_effect(btn_sales, '#9b59b6', get_hover_color('#9b59b6'))
 
         # Filter frame
         filter_container = tk.Frame(search_frame, bg='#ecf0f1')
@@ -229,8 +239,11 @@ class ProductView:
         price_combo.pack(side='left', padx=5)
 
         btn_filter = tk.Button(filter_container, text="Lọc",
-                              bg='#27ae60', fg='white', font=('Arial', 12, 'bold'), padx=10)
+                              bg='#27ae60', fg='white', font=('Arial', 12, 'bold'),
+                              padx=10, cursor='hand2', relief='raised', bd=2)
         btn_filter.pack(side='left', padx=5)
+        # Add hover effect
+        add_button_hover_effect(btn_filter, '#27ae60', get_hover_color('#27ae60'))
 
         # Load product data and images
         all_products = []
@@ -396,6 +409,8 @@ class ProductView:
                                        cursor='hand2', bd=2, width=BUTTON_WIDTH,
                                        command=lambda: self.show_add_product_form(role, username))
             btn_add_product.pack(side='right')
+            # Add hover effect
+            add_button_hover_effect(btn_add_product, '#27ae60', get_hover_color('#27ae60'))
 
             # Second row: Edit and Brand buttons (centered and same size)
             buttons_row2_frame = tk.Frame(action_button_frame)
@@ -419,6 +434,8 @@ class ProductView:
                                            cursor='hand2', bd=2, width=BUTTON_WIDTH,
                                            command=lambda: self.show_brand_management(role, username))
             btn_brand_management.pack(side='right')
+            # Add hover effect
+            add_button_hover_effect(btn_brand_management, '#9b59b6', get_hover_color('#9b59b6'))
 
             status_label = tk.Label(action_button_frame, text="Chọn sản phẩm để xóa hoặc sửa",
                                    font=('Arial', 10), fg='#7f8c8d')
@@ -859,14 +876,17 @@ class ProductView:
 
                 if selected_product_id in product_data:
                     if role == "buyer":
-                        # Enable add to cart button
+                        # Enable add to cart button with hover effect
                         btn_add_to_cart.config(state='normal', bg='#27ae60')
+                        add_button_hover_effect(btn_add_to_cart, '#27ae60', get_hover_color('#27ae60'))
                         status_label.config(text="Nút đã được kích hoạt - Click để thêm vào giỏ!", fg='green')
                         btn_add_to_cart.config(command=lambda: add_to_cart(selected_product_id, product_data[selected_product_id]["name"]))
                     else:
-                        # Enable delete and edit product buttons
+                        # Enable delete and edit product buttons with hover effects
                         btn_delete_product.config(state='normal', bg='#e74c3c')
+                        add_button_hover_effect(btn_delete_product, '#e74c3c', get_hover_color('#e74c3c'))
                         btn_edit_product.config(state='normal', bg='#f39c12')
+                        add_button_hover_effect(btn_edit_product, '#f39c12', get_hover_color('#f39c12'))
                         status_label.config(text="Click để xóa hoặc sửa sản phẩm đã chọn", fg='blue')
                         btn_delete_product.config(command=lambda: delete_product(selected_product_id, product_data[selected_product_id]["name"]))
                         btn_edit_product.config(command=lambda: self.show_edit_product_form(selected_product_id, role, username))
@@ -906,6 +926,31 @@ class ProductView:
                     else:
                         show_main_image(None)
                         update_thumbnail_gallery([])
+
+                    # Update color combo with colors from database for buyer
+                    if role == "buyer":
+                        try:
+                            conn = get_db_connection()
+                            cursor = conn.cursor()
+                            cursor.execute("SELECT MauSac FROM mausac_sp WHERE MaSP = %s", (selected_product_id,))
+                            colors = [row[0] for row in cursor.fetchall()]
+                            if colors:
+                                color_combo['values'] = colors
+                                color_var.set(colors[0])  # Set first color as default
+                            else:
+                                # Fallback to default colors
+                                color_combo['values'] = ["Trắng", "Xanh Dương", "Đen", "Nâu"]
+                                color_var.set("Đen")
+                        except Exception as e:
+                            print(f"Error loading colors: {e}")
+                            # Use default colors on error
+                            color_combo['values'] = ["Trắng", "Xanh Dương", "Đen", "Nâu"]
+                            color_var.set("Đen")
+                        finally:
+                            if cursor:
+                                cursor.close()
+                            if conn:
+                                conn.close()
             else:
                 selected_product_id = None
                 if role == "buyer":
@@ -1166,6 +1211,12 @@ class ProductView:
         text_description = tk.Text(main_container, font=('Arial', 11), width=42, height=5, wrap='word')  # Reduced height from 6 to 5
         text_description.pack(padx=10, pady=(0, 8))
 
+        # Colors (Available colors for this product)
+        tk.Label(main_container, text="Màu sắc có sẵn (mỗi màu một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        text_colors = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')
+        text_colors.insert(1.0, "Trắng\nXanh Dương\nĐen\nNâu")  # Default colors
+        text_colors.pack(padx=10, pady=(0, 8))
+
         # Image URLs
         tk.Label(main_container, text="URL hình ảnh (mỗi URL một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
         text_images = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')
@@ -1214,6 +1265,7 @@ class ProductView:
             quantity_str = entry_quantity.get().strip()
             import_date_str = entry_import_date.get().strip()
             description = text_description.get(1.0, tk.END).strip()
+            colors = text_colors.get(1.0, tk.END).strip()
             image_urls = text_images.get(1.0, tk.END).strip()
 
             # Validation
@@ -1254,6 +1306,16 @@ class ProductView:
                 conn = get_db_connection()
                 cursor = conn.cursor()
 
+                # Create color table if not exists
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS mausac_sp (
+                        MaSP VARCHAR(30) NOT NULL,
+                        MauSac VARCHAR(100) NOT NULL,
+                        PRIMARY KEY (MaSP, MauSac),
+                        FOREIGN KEY (MaSP) REFERENCES sanpham(MaSP) ON DELETE CASCADE
+                    )
+                """)
+
                 # Generate new product ID
                 cursor.execute("SELECT MAX(CAST(SUBSTRING(MaSP, 3) AS UNSIGNED)) FROM sanpham WHERE MaSP LIKE 'SP%'")
                 result = cursor.fetchone()
@@ -1267,6 +1329,12 @@ class ProductView:
                 """, (product_id, name, price, description if description else None, brand_id, quantity,
                       import_date_str if import_date_str else None))
 
+                # Insert colors if provided
+                if colors:
+                    color_list = [color.strip() for color in colors.split('\n') if color.strip()]
+                    for color in color_list:
+                        cursor.execute("INSERT INTO mausac_sp (MaSP, MauSac) VALUES (%s, %s)", (product_id, color))
+
                 # Insert image URLs if provided
                 if image_urls:
                     urls = [url.strip() for url in image_urls.split('\n') if url.strip()]
@@ -1279,7 +1347,8 @@ class ProductView:
 
                 conn.commit()
                 total_images = len([url.strip() for url in image_urls.split('\n') if url.strip()]) + len(uploaded_images)
-                messagebox.showinfo("Thành công", f"Đã thêm sản phẩm '{name}' với {total_images} ảnh thành công!")
+                total_colors = len([color.strip() for color in colors.split('\n') if color.strip()])
+                messagebox.showinfo("Thành công", f"Đã thêm sản phẩm '{name}' với {total_colors} màu và {total_images} ảnh thành công!")
                 add_window.destroy()
 
                 # Refresh the product list
@@ -1340,6 +1409,16 @@ class ProductView:
             # Get product images
             cursor.execute("SELECT URLAnh FROM url_sp WHERE MaSP = %s", (product_id,))
             current_images = [row[0] for row in cursor.fetchall()]
+
+            # Get product colors
+            current_colors = []
+            try:
+                cursor.execute("SELECT MauSac FROM mausac_sp WHERE MaSP = %s", (product_id,))
+                current_colors = [row[0] for row in cursor.fetchall()]
+            except Exception as e:
+                # If table doesn't exist yet, use default colors
+                print(f"Note: Color table may not exist yet: {e}")
+                current_colors = ["Trắng", "Xanh Dương", "Đen", "Nâu"]
 
         except Exception as e:
             messagebox.showerror("Lỗi", f"Không thể tải dữ liệu sản phẩm: {str(e)}")
@@ -1459,6 +1538,15 @@ class ProductView:
         text_description.insert(1.0, current_data['description'])
         text_description.pack(padx=10, pady=(0, 8))
 
+        # Colors (Available colors for this product)
+        tk.Label(main_container, text="Màu sắc có sẵn (mỗi màu một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        text_colors = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')
+        if current_colors:
+            text_colors.insert(1.0, '\n'.join(current_colors))
+        else:
+            text_colors.insert(1.0, "Trắng\nXanh Dương\nĐen\nNâu")  # Default colors
+        text_colors.pack(padx=10, pady=(0, 8))
+
         # Image URLs
         tk.Label(main_container, text="URL hình ảnh (mỗi URL một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
         text_images = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')
@@ -1509,6 +1597,7 @@ class ProductView:
             quantity_str = entry_quantity.get().strip()
             import_date_str = entry_import_date.get().strip()
             description = text_description.get(1.0, tk.END).strip()
+            colors = text_colors.get(1.0, tk.END).strip()
             image_urls = text_images.get(1.0, tk.END).strip()
 
             # Validation
@@ -1549,6 +1638,16 @@ class ProductView:
                 conn = get_db_connection()
                 cursor = conn.cursor()
 
+                # Create color table if not exists
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS mausac_sp (
+                        MaSP VARCHAR(30) NOT NULL,
+                        MauSac VARCHAR(100) NOT NULL,
+                        PRIMARY KEY (MaSP, MauSac),
+                        FOREIGN KEY (MaSP) REFERENCES sanpham(MaSP) ON DELETE CASCADE
+                    )
+                """)
+
                 # Update product with import date
                 cursor.execute("""
                     UPDATE sanpham 
@@ -1556,6 +1655,15 @@ class ProductView:
                     WHERE MaSP = %s
                 """, (name, price, description if description else None, brand_id, quantity,
                       import_date_str if import_date_str else None, product_id))
+
+                # Delete old colors
+                cursor.execute("DELETE FROM mausac_sp WHERE MaSP = %s", (product_id,))
+
+                # Insert new colors if provided
+                if colors:
+                    color_list = [color.strip() for color in colors.split('\n') if color.strip()]
+                    for color in color_list:
+                        cursor.execute("INSERT INTO mausac_sp (MaSP, MauSac) VALUES (%s, %s)", (product_id, color))
 
                 # Delete old images
                 cursor.execute("DELETE FROM url_sp WHERE MaSP = %s", (product_id,))
@@ -1572,7 +1680,8 @@ class ProductView:
 
                 conn.commit()
                 total_images = len([url.strip() for url in image_urls.split('\n') if url.strip()]) + len(uploaded_images)
-                messagebox.showinfo("Thành công", f"Đã cập nhật sản phẩm '{name}' với {total_images} ảnh thành công!")
+                total_colors = len([color.strip() for color in colors.split('\n') if color.strip()])
+                messagebox.showinfo("Thành công", f"Đã cập nhật sản phẩm '{name}' với {total_colors} màu và {total_images} ảnh thành công!")
                 edit_window.destroy()
 
                 # Refresh the product list

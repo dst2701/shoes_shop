@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from config.database import get_db_connection
 from datetime import datetime
+from utils.ui_effects import add_button_hover_effect, get_hover_color
 
 
 class SalesView:
@@ -30,8 +31,10 @@ class SalesView:
         # Back button
         btn_back = tk.Button(header_frame, text="← Quay lại", command=lambda: return_callback(),
                             bg='#34495e', fg='white', font=('Arial', 12, 'bold'),
-                            padx=15, pady=8, relief='flat', cursor='hand2')
+                            padx=15, pady=8, relief='raised', cursor='hand2', bd=2)
         btn_back.pack(side='left', padx=20, pady=20)
+        # Add hover effect
+        add_button_hover_effect(btn_back, '#34495e', get_hover_color('#34495e'))
 
         # Title
         tk.Label(header_frame, text="📊 THỐNG KÊ DOANH THU THÁNG",
@@ -71,8 +74,10 @@ class SalesView:
         # View button
         btn_view = tk.Button(selection_frame, text="🔍 Xem thống kê",
                             bg='#3498db', fg='white', font=('Arial', 12, 'bold'),
-                            padx=15, pady=8, relief='flat', cursor='hand2')
+                            padx=15, pady=8, relief='raised', cursor='hand2', bd=2)
         btn_view.pack(side='left')
+        # Add hover effect
+        add_button_hover_effect(btn_view, '#3498db', get_hover_color('#3498db'))
 
         # Summary frame
         summary_frame = tk.Frame(content_frame, bg='#ecf0f1', relief='solid', bd=1)

@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import messagebox
 from config.database import get_db_connection
 from datetime import datetime
+from utils.ui_effects import add_button_hover_effect, get_hover_color
 
 class InvoiceView:
     def __init__(self, root):
@@ -70,9 +71,11 @@ class InvoiceView:
         # Back button
         btn_back = tk.Button(header_container, text="← Quay lại giỏ hàng",
                             command=lambda: on_back_callback() if on_back_callback else None,
-                            bg='#95a5a6', fg='white', relief='flat',
-                            font=('Arial', 12), padx=15, pady=8, cursor='hand2')
+                            bg='#95a5a6', fg='white', relief='raised',
+                            font=('Arial', 12), padx=15, pady=8, cursor='hand2', bd=2)
         btn_back.pack(side='right', pady=15)
+        # Add hover effect
+        add_button_hover_effect(btn_back, '#95a5a6', get_hover_color('#95a5a6'))
 
         # Main content frame
         main_frame = tk.Frame(self.root, bg='white')
@@ -268,19 +271,23 @@ class InvoiceView:
         action_frame = tk.Frame(main_frame, bg='white')
         action_frame.pack(fill='x', pady=(20, 0))
 
-        # Payment button
+        # Payment button with enhanced hover effect
         btn_payment = tk.Button(action_frame, text="💳 THANH TOÁN",
                                command=lambda: self.process_payment_main(username, role, cart_products, total_amount, on_back_callback),
                                bg='#27ae60', fg='white', font=('Arial', 16, 'bold'),
-                               relief='flat', padx=40, pady=12, cursor='hand2')
+                               relief='raised', padx=40, pady=12, cursor='hand2', bd=3)
         btn_payment.pack(side='right')
+        # Add hover effect with extra prominence for payment button
+        add_button_hover_effect(btn_payment, '#27ae60', get_hover_color('#27ae60'))
 
         # Print button
         btn_print = tk.Button(action_frame, text="🖨️ In hóa đơn",
                              command=lambda: messagebox.showinfo("Thông báo", "Chức năng in hóa đơn sẽ được cập nhật!"),
                              bg='#3498db', fg='white', font=('Arial', 14, 'bold'),
-                             relief='flat', padx=20, pady=10, cursor='hand2')
+                             relief='raised', padx=20, pady=10, cursor='hand2', bd=2)
         btn_print.pack(side='left')
+        # Add hover effect
+        add_button_hover_effect(btn_print, '#3498db', get_hover_color('#3498db'))
 
     def process_payment_main(self, username, role, cart_products, total_amount, on_back_callback):
         """Process payment from invoice page - from main.py"""
