@@ -1,8 +1,8 @@
 # 📊 SQL QUERIES DOCUMENTATION - SHOES SHOP PROJECT
 
-**Database**: `shopgiaydep09102025`  
+**Database**: `shopquanao`  
 **Project**: Shoes Shop Management System  
-**Date**: October 28, 2025
+**Last Updated**: October 29, 2025
 
 ---
 
@@ -11,10 +11,11 @@
 2. [Product View Queries](#product-view)
 3. [Cart View Queries](#cart-view)
 4. [Invoice View Queries](#invoice-view)
-5. [Sales View Queries](#sales-view)
-6. [Product Model Queries](#product-model)
-7. [Login/Registration Queries](#login-registration)
-8. [Database Schema](#database-schema)
+5. [Invoice History View Queries](#invoice-history-view)
+6. [Sales View Queries](#sales-view)
+7. [Product Model Queries](#product-model)
+8. [Login/Registration Queries](#login-registration)
+9. [Database Schema](#database-schema)
 
 ---
 
@@ -525,6 +526,75 @@ DELETE FROM giohangchuasanpham WHERE MaGH = %s
 
 ---
 
+## INVOICE HISTORY VIEW
+
+### 16A. Get Customer Invoice History
+**Module**: `views/invoice_history_view.py`  
+**Function**: `load_invoice_history()`
+
+```sql
+-- Get customer ID from username
+SELECT MaKH FROM khachhang WHERE TenDN = %s
+
+-- Get all invoices for this customer with totals
+SELECT 
+    hd.MaHD,
+    hd.NgayLap,
+    SUM(ct.ThanhTien) as TongTien,
+    SUM(ct.SoLuongMua) as TongSL
+FROM hoadon hd
+INNER JOIN cthoadon ct ON hd.MaHD = ct.MaHD
+WHERE hd.MaKH = %s
+GROUP BY hd.MaHD, hd.NgayLap
+ORDER BY hd.NgayLap DESC
+```
+
+**Purpose**: Display customer's purchase history (all orders)
+
+**Returns**:
+- Invoice code (MaHD)
+- Invoice date (NgayLap) - DATE format (dd/mm/yyyy)
+- Total amount (sum of all items)
+- Total quantity (sum of all items)
+
+**Sorting**: Most recent orders first (DESC by date)
+
+---
+
+### 16B. Get Invoice Details
+**Module**: `views/invoice_history_view.py`  
+**Function**: `view_invoice_details()`
+
+```sql
+-- Get invoice header with customer info
+SELECT hd.NgayLap, kh.TenKH, kh.SDT, kh.DiaChi
+FROM hoadon hd
+INNER JOIN khachhang kh ON hd.MaKH = kh.MaKH
+WHERE hd.MaHD = %s
+
+-- Get all items in the invoice
+SELECT MaSP, TenSP, MauSac, Size, SoLuongMua, DonGia, ThanhTien
+FROM cthoadon
+WHERE MaHD = %s
+ORDER BY TenSP
+```
+
+**Purpose**: Show detailed view of a specific invoice
+
+**Returns**:
+- Customer information (name, phone, address)
+- Invoice date
+- List of all products with:
+  - Product code, name
+  - Color, Size
+  - Quantity purchased
+  - Unit price (at time of purchase)
+  - Line total
+
+**Note**: Shows historical prices (DonGia from cthoadon), not current prices
+
+---
+
 ## SALES VIEW
 
 ### 17. Load Monthly Sales Statistics
@@ -534,28 +604,45 @@ DELETE FROM giohangchuasanpham WHERE MaGH = %s
 ```sql
 SELECT 
     ct.MaSP,
-    sp.TenSP,
+    ct.TenSP,
     SUM(ct.SoLuongMua) as total_quantity,
-    sp.Gia as unit_price,
-    SUM(ct.SoLuongMua * sp.Gia) as total_sales
+    SUM(ct.ThanhTien) as total_sales
 FROM cthoadon ct
 INNER JOIN hoadon hd ON ct.MaHD = hd.MaHD
-INNER JOIN sanpham sp ON ct.MaSP = sp.MaSP
 WHERE MONTH(hd.NgayLap) = %s AND YEAR(hd.NgayLap) = %s
-GROUP BY ct.MaSP, sp.TenSP, sp.Gia
-ORDER BY total_sales DESC
+GROUP BY ct.MaSP, ct.TenSP
+ORDER BY {order_by}
 ```
 
-**Purpose**: Get sales statistics for a specific month/year, sorted by revenue
+**Purpose**: Get sales statistics for a specific month/year with dynamic sorting
+
+**Parameters**:
+- Month (1-12)
+- Year (e.g., 2025)
+
+**Sorting Options** (order_by):
+1. `total_sales DESC` - Doanh thu cao → thấp (default)
+2. `total_quantity DESC` - Số lượng bán cao → thấp
+3. `ct.MaSP ASC` - Mã sản phẩm A → Z
+4. `ct.TenSP ASC` - Tên sản phẩm A → Z
 
 **Returns**: 
-- Product code
-- Product name
-- Total quantity sold
-- Unit price
-- Total revenue per product
+- Product code (MaSP)
+- Product name (TenSP)
+- Total quantity sold (sum of all colors/sizes)
+- Total revenue (actual sold price from ThanhTien)
 
-**Sorting**: Descending by total revenue (best sellers first)
+**Key Changes from Previous Version**:
+- ❌ Removed: `sp.Gia as unit_price` (price changes over time)
+- ❌ Removed: JOIN with sanpham table (not needed)
+- ✅ Added: Dynamic sorting options
+- ✅ Added: Uses actual sold price (ThanhTien) instead of current price
+- ✅ Added: Groups all colors/sizes together
+
+**Why These Changes?**:
+- Product prices can change → historical price is in cthoadon
+- No need to show unit price (varies by discount/promotion)
+- Focus on total quantity sold and total revenue
 
 ---
 
@@ -866,6 +953,7 @@ CREATE TABLE `sanpham` (
   `MoTa` text,
   `MaTH` varchar(30) NOT NULL,
   `SoLuong` int NOT NULL,
+  `NgayNhapHang` date DEFAULT NULL,
   PRIMARY KEY (`MaSP`),
   KEY `MaTH` (`MaTH`),
   CONSTRAINT `sanpham_ibfk_1` FOREIGN KEY (`MaTH`) REFERENCES `thuonghieu` (`MaTH`),
@@ -873,6 +961,11 @@ CREATE TABLE `sanpham` (
   CONSTRAINT `sanpham_chk_2` CHECK ((`SoLuong` >= 0))
 )
 ```
+
+**Discount Feature**:
+- If `NgayNhapHang` > 6 months old: 10% discount
+- If `NgayNhapHang` > 12 months old: 15% discount
+- Discount calculated in Python code, not in database
 
 #### thuonghieu (Brands)
 ```sql

@@ -163,6 +163,15 @@ class ProductView:
             btn_cart.pack(side='right', pady=15, padx=(0, 10))
             # Add hover effect
             add_button_hover_effect(btn_cart, '#f39c12', get_hover_color('#f39c12'))
+
+            # Invoice history button for buyers
+            btn_history = tk.Button(header_container, text="📜 Lịch sử",
+                                   command=lambda: self.show_invoice_history(role, username) if hasattr(self, 'show_invoice_history') else None,
+                                   bg='#9b59b6', fg='white', relief='flat',
+                                   font=('Arial', 12, 'bold'), padx=15, pady=5, cursor='hand2', bd=2)
+            btn_history.pack(side='right', pady=15, padx=(0, 10))
+            # Add hover effect
+            add_button_hover_effect(btn_history, '#9b59b6', get_hover_color('#9b59b6'))
         else:
             # No product management button in header for sellers anymore
             pass
@@ -321,7 +330,9 @@ class ProductView:
             tree.column("Giá", width=120, anchor='e')
             tree.column("SL", width=50, anchor='e')
         else:
-            tree = ttk.Treeview(tree_frame, columns=("Mã SP", "Tên", "Giá"), show="headings", height=8, style="Custom.Treeview")
+            # Enable multiple selection for buyers
+            tree = ttk.Treeview(tree_frame, columns=("Mã SP", "Tên", "Giá"), show="headings", height=8,
+                               style="Custom.Treeview", selectmode='extended')
             tree.heading("Mã SP", text="Mã SP")
             tree.heading("Tên", text="Tên giày")
             tree.heading("Giá", text="Giá")
@@ -347,33 +358,6 @@ class ProductView:
                                        cursor='hand2', bd=2)
             btn_add_to_cart.pack(anchor='w', pady=5)
 
-            # Color and Size selection frame
-            selection_frame = tk.Frame(action_button_frame, bg='white')
-            selection_frame.pack(anchor='w', pady=(10, 5), fill='x')
-
-            # Color and Size on the same line
-            color_size_frame = tk.Frame(selection_frame, bg='white')
-            color_size_frame.pack(fill='x', pady=5)
-
-            # Color selection (left side)
-            color_frame = tk.Frame(color_size_frame, bg='white')
-            color_frame.pack(side='left', fill='x', expand=True, padx=(0, 10))
-
-            tk.Label(color_frame, text="Màu sắc:", font=('Arial', 12, 'bold'), bg='white').pack(anchor='w')
-            color_var = tk.StringVar(value="Đen")
-            color_combo = ttk.Combobox(color_frame, textvariable=color_var, width=12, state='readonly',
-                                      font=('Arial', 11), values=["Trắng", "Xanh Dương", "Đen", "Nâu"])
-            color_combo.pack(anchor='w', pady=(2, 0))
-
-            # Size selection (right side)
-            size_frame = tk.Frame(color_size_frame, bg='white')
-            size_frame.pack(side='right', fill='x', expand=True)
-
-            tk.Label(size_frame, text="Kích cỡ:", font=('Arial', 12, 'bold'), bg='white').pack(anchor='w')
-            size_var = tk.StringVar(value="42")
-            size_combo = ttk.Combobox(size_frame, textvariable=size_var, width=12, state='readonly',
-                                     font=('Arial', 11), values=[str(i) for i in range(36, 46)])
-            size_combo.pack(anchor='w', pady=(2, 0))
 
             status_label = tk.Label(action_button_frame, text="Chọn sản phẩm để kích hoạt nút",
                                    font=('Arial', 10), fg='#7f8c8d')
@@ -459,103 +443,235 @@ class ProductView:
                 if conn:
                     conn.close()
 
+        def show_multi_product_cart_dialog(selected_products):
+            """Show dialog for adding multiple products to cart with color, size, and quantity options"""
+            if not selected_products:
+                return
+
+            # Create scrollable dialog with larger size
+            dialog = tk.Toplevel(self.root)
+            dialog.title(f"Thêm {len(selected_products)} sản phẩm vào giỏ hàng")
+            dialog.geometry("800x650")  # Increased width from 650 to 800
+            dialog.resizable(False, False)
+            dialog.grab_set()
+            dialog.transient(self.root)
+
+            # Center dialog on screen
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() // 2) - (800 // 2)
+            y = (dialog.winfo_screenheight() // 2) - (650 // 2)
+            dialog.geometry(f"+{x}+{y}")
+
+            # Header
+            header = tk.Frame(dialog, bg='#3498db', height=60)
+            header.pack(fill='x')
+            header.pack_propagate(False)
+
+            tk.Label(header, text=f"🛒 Cấu hình {len(selected_products)} sản phẩm",
+                    font=('Arial', 16, 'bold'), bg='#3498db', fg='white').pack(pady=15)
+
+            # Main content frame (to contain scrollable area)
+            content_frame = tk.Frame(dialog, bg='#f0f0f0')
+            content_frame.pack(fill='both', expand=True)
+
+            # Create scrollable frame for products - CENTERED
+            scroll_container = tk.Frame(content_frame, bg='#f0f0f0')
+            scroll_container.pack(fill='both', expand=True, padx=20, pady=10)
+
+            canvas = tk.Canvas(scroll_container, bg='white', highlightthickness=0)
+            scrollbar = tk.Scrollbar(scroll_container, orient="vertical", command=canvas.yview)
+            scrollable_frame = tk.Frame(canvas, bg='white')
+
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+
+            # Center the content in canvas
+            canvas_frame = canvas.create_window((0, 0), window=scrollable_frame, anchor="n")
+
+            # Update canvas width to center content
+            def update_canvas_width(event):
+                canvas_width = event.width
+                canvas.itemconfig(canvas_frame, width=canvas_width)
+
+            canvas.bind('<Configure>', update_canvas_width)
+            canvas.configure(yscrollcommand=scrollbar.set)
+
+            # Pack canvas and scrollbar
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+
+            # Enable mousewheel scrolling
+            def _on_mousewheel(event):
+                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            dialog.bind_all("<MouseWheel>", _on_mousewheel)
+
+            # Store product configurations
+            product_configs = {}
+
+            # Create configuration for each product - CENTERED with better width
+            for idx, product_id in enumerate(selected_products):
+                if product_id not in product_data:
+                    continue
+
+                product = product_data[product_id]
+
+                # Product frame - wider and centered
+                product_frame = tk.Frame(scrollable_frame, bg='white', relief='solid', bd=2, width=700)
+                product_frame.pack(padx=30, pady=10, fill='x')
+
+                # Product header
+                header_frame = tk.Frame(product_frame, bg='#ecf0f1')
+                header_frame.pack(fill='x')
+
+                tk.Label(header_frame, text=f"{idx + 1}. {product['name']}",
+                        font=('Arial', 13, 'bold'), bg='#ecf0f1', fg='#2c3e50').pack(anchor='w', padx=10, pady=8)
+
+                # Price info
+                price_text = product['price']
+                if product.get('discount', 0) > 0:
+                    discounted_price = product['original_price'] * (1 - product['discount'] / 100)
+                    price_text = f"{discounted_price:,.0f} VNĐ (-{product['discount']}%)"
+
+                tk.Label(header_frame, text=price_text,
+                        font=('Arial', 11), bg='#ecf0f1', fg='#27ae60').pack(anchor='w', padx=10, pady=(0, 8))
+
+                # Configuration frame
+                config_frame = tk.Frame(product_frame, bg='white')
+                config_frame.pack(fill='x', padx=15, pady=15)
+
+                # Color selection
+                color_label_frame = tk.Frame(config_frame, bg='white')
+                color_label_frame.pack(fill='x', pady=(0, 8))
+
+                tk.Label(color_label_frame, text="Màu sắc:", font=('Arial', 11, 'bold'),
+                        bg='white').pack(side='left')
+
+                # Get colors from database
+                try:
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT MauSac FROM mausac_sp WHERE MaSP = %s", (product_id,))
+                    colors = [row[0] for row in cursor.fetchall()]
+                    if not colors:
+                        colors = ["Trắng", "Xanh Dương", "Đen", "Nâu"]
+                except:
+                    colors = ["Trắng", "Xanh Dương", "Đen", "Nâu"]
+                finally:
+                    if 'cursor' in locals() and cursor:
+                        cursor.close()
+                    if 'conn' in locals() and conn:
+                        conn.close()
+
+                color_var = tk.StringVar(value=colors[0])
+                color_combo = ttk.Combobox(config_frame, textvariable=color_var, width=25,
+                                          state='readonly', font=('Arial', 11), values=colors)
+                color_combo.pack(fill='x', pady=(0, 8))
+
+                # Size selection
+                size_label_frame = tk.Frame(config_frame, bg='white')
+                size_label_frame.pack(fill='x', pady=(0, 8))
+
+                tk.Label(size_label_frame, text="Kích cỡ:", font=('Arial', 11, 'bold'),
+                        bg='white').pack(side='left')
+
+                size_var = tk.StringVar(value="42")
+                size_combo = ttk.Combobox(config_frame, textvariable=size_var, width=25,
+                                         state='readonly', font=('Arial', 11),
+                                         values=[str(i) for i in range(36, 46)])
+                size_combo.pack(fill='x', pady=(0, 8))
+
+                # Quantity selection
+                qty_label_frame = tk.Frame(config_frame, bg='white')
+                qty_label_frame.pack(fill='x', pady=(0, 8))
+
+                tk.Label(qty_label_frame, text=f"Số lượng (Còn: {product['quantity']}):",
+                        font=('Arial', 11, 'bold'), bg='white').pack(side='left')
+
+                qty_var = tk.IntVar(value=1)
+                qty_spin = tk.Spinbox(config_frame, from_=1, to=product['quantity'],
+                                     textvariable=qty_var, width=23, font=('Arial', 11),
+                                     justify='center')
+                qty_spin.pack(fill='x')
+
+                # Store configuration
+                product_configs[product_id] = {
+                    'name': product['name'],
+                    'color_var': color_var,
+                    'size_var': size_var,
+                    'qty_var': qty_var,
+                    'max_qty': product['quantity']
+                }
+
+            # Button frame (FIXED at bottom like seller's add product)
+            button_frame = tk.Frame(dialog, bg='white', relief='ridge', bd=1, height=70)
+            button_frame.pack(side='bottom', fill='x')
+            button_frame.pack_propagate(False)
+
+            def add_all_to_cart():
+                """Add all configured products to cart"""
+                added_count = 0
+                errors = []
+
+                for product_id, config in product_configs.items():
+                    try:
+                        color = config['color_var'].get()
+                        size = config['size_var'].get()
+                        qty = config['qty_var'].get()
+
+                        if qty <= 0 or qty > config['max_qty']:
+                            errors.append(f"{config['name']}: Số lượng không hợp lệ")
+                            continue
+
+                        # Add to cart using existing function
+                        add_to_cart_with_quantity(product_id, config['name'], color, size, qty)
+                        added_count += 1
+
+                    except Exception as e:
+                        errors.append(f"{config['name']}: {str(e)}")
+
+                # Unbind mousewheel before closing
+                dialog.unbind_all("<MouseWheel>")
+                dialog.destroy()
+
+                # Show result
+                if added_count > 0:
+                    btn_cart.config(text=update_cart_button())
+
+                # if errors:
+                #     messagebox.showwarning("Cảnh báo",
+                #         f"Đã thêm {added_count}/{len(product_configs)} sản phẩm.\n\nLỗi:\n" + "\n".join(errors[:3]))
+                # else:
+                #     messagebox.showinfo("Thành công",
+                #         f"Đã thêm {added_count} sản phẩm vào giỏ hàng!")
+
+            def cancel_dialog():
+                dialog.unbind_all("<MouseWheel>")
+                dialog.destroy()
+
+            # Add buttons - FIXED AT BOTTOM LEFT AND RIGHT
+            btn_add_all = tk.Button(button_frame, text="✅ Thêm tất cả vào giỏ", command=add_all_to_cart,
+                                   bg='#27ae60', fg='white', font=('Arial', 13, 'bold'),
+                                   padx=30, pady=10, cursor='hand2', relief='raised', bd=2)
+            btn_add_all.pack(side='left', padx=20, pady=15)
+            add_button_hover_effect(btn_add_all, '#27ae60', get_hover_color('#27ae60'))
+
+            btn_cancel = tk.Button(button_frame, text="❌ Hủy bỏ", command=cancel_dialog,
+                                  bg='#e74c3c', fg='white', font=('Arial', 13, 'bold'),
+                                  padx=30, pady=10, cursor='hand2', relief='raised', bd=2)
+            btn_cancel.pack(side='right', padx=20, pady=15)
+            add_button_hover_effect(btn_cancel, '#e74c3c', get_hover_color('#e74c3c'))
+
+        # OLD add_to_cart function - NO LONGER USED
+        # This function is replaced by show_multi_product_cart_dialog
+        # Keeping it commented for reference only
+        '''
         def add_to_cart(ma_sp, ten_sp):
-            if role != "buyer":
-                return
-
-            # Get selected color and size
-            selected_color = color_var.get()
-            selected_size = size_var.get()
-
-            # Get current stock for this product
-            try:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT SoLuong FROM sanpham WHERE MaSP = %s", (ma_sp,))
-                stock_result = cursor.fetchone()
-                available_stock = stock_result[0] if stock_result else 0
-
-                if available_stock <= 0:
-                    messagebox.showwarning("Hết hàng", f"Sản phẩm {ten_sp} hiện đã hết hàng!")
-                    return
-
-            except Exception as e:
-                messagebox.showerror("Lỗi", f"Không thể kiểm tra tồn kho: {str(e)}")
-                return
-            finally:
-                if cursor:
-                    cursor.close()
-                if conn:
-                    conn.close()
-
-            # Create quantity input dialog
-            quantity_dialog = tk.Toplevel(self.root)
-            quantity_dialog.title("Chọn số lượng")
-            quantity_dialog.geometry("380x250")  # Increased size from 350x200
-            quantity_dialog.resizable(False, False)
-            quantity_dialog.grab_set()  # Make dialog modal
-
-            # Center the dialog
-            quantity_dialog.transient(self.root)
-            quantity_dialog.geometry("+%d+%d" % (self.root.winfo_rootx() + 50, self.root.winfo_rooty() + 50))
-
-            # Dialog content with better spacing
-            tk.Label(quantity_dialog, text=f"Sản phẩm: {ten_sp}",
-                    font=('Arial', 12, 'bold')).pack(pady=(15, 8))
-            tk.Label(quantity_dialog, text=f"Màu sắc: {selected_color} | Size: {selected_size}",
-                    font=('Arial', 10)).pack(pady=5)
-            tk.Label(quantity_dialog, text=f"Số lượng có sẵn: {available_stock}",
-                    font=('Arial', 10), fg='#27ae60').pack(pady=5)
-
-            # Quantity input frame
-            input_frame = tk.Frame(quantity_dialog)
-            input_frame.pack(pady=20)
-
-            tk.Label(input_frame, text="Chọn số lượng:", font=('Arial', 12, 'bold')).pack(side='left', padx=(0, 10))
-
-            # Quantity spinbox with validation
-            quantity_var = tk.IntVar(value=1)
-            quantity_spin = tk.Spinbox(input_frame, from_=1, to=available_stock,
-                                     textvariable=quantity_var, width=10,
-                                     font=('Arial', 12), justify='center')
-            quantity_spin.pack(side='left')
-            quantity_spin.focus()  # Focus on spinbox
-
-            # Button frame with better spacing
-            button_frame = tk.Frame(quantity_dialog)
-            button_frame.pack(pady=(30, 20))  # More padding
-
-            def confirm_add():
-                selected_quantity = quantity_var.get()
-
-                # Validate quantity
-                if selected_quantity < 1:
-                    messagebox.showwarning("Lỗi", "Số lượng phải lớn hơn 0!")
-                    return
-                if selected_quantity > available_stock:
-                    messagebox.showwarning("Lỗi", f"Số lượng vượt quá tồn kho! (Còn lại: {available_stock})")
-                    return
-
-                quantity_dialog.destroy()
-
-                # Add to cart with selected quantity
-                add_to_cart_with_quantity(ma_sp, ten_sp, selected_color, selected_size, selected_quantity)
-
-            def cancel_add():
-                quantity_dialog.destroy()
-
-            # Larger, more visible buttons
-            tk.Button(button_frame, text="✅ Thêm vào giỏ hàng", command=confirm_add,
-                     bg='#27ae60', fg='white', font=('Arial', 12, 'bold'),
-                     padx=25, pady=10, cursor='hand2', relief='raised', bd=2).pack(side='left', padx=(0, 15))
-
-            tk.Button(button_frame, text="❌ Hủy bỏ", command=cancel_add,
-                     bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'),
-                     padx=25, pady=10, cursor='hand2', relief='raised', bd=2).pack(side='left')
-
-            # Allow Enter key to confirm
-            quantity_dialog.bind('<Return>', lambda e: confirm_add())
-            quantity_spin.bind('<Return>', lambda e: confirm_add())
+            # This function used color_var and size_var which are removed
+            # Now using dialog system instead
+            pass
+        '''
 
         def add_to_cart_with_quantity(ma_sp, ten_sp, selected_color, selected_size, quantity):
             """Add product to cart with specified quantity"""
@@ -871,17 +987,67 @@ class ProductView:
             nonlocal selected_product_id
             selection = tree.selection()
 
-            if selection:
-                selected_product_id = selection[0]
+        def on_product_select_combined(event):
+            nonlocal selected_product_id
+            selection = tree.selection()
 
-                if selected_product_id in product_data:
-                    if role == "buyer":
-                        # Enable add to cart button with hover effect
-                        btn_add_to_cart.config(state='normal', bg='#27ae60')
-                        add_button_hover_effect(btn_add_to_cart, '#27ae60', get_hover_color('#27ae60'))
-                        status_label.config(text="Nút đã được kích hoạt - Click để thêm vào giỏ!", fg='green')
-                        btn_add_to_cart.config(command=lambda: add_to_cart(selected_product_id, product_data[selected_product_id]["name"]))
+            if selection:
+                if role == "buyer":
+                    # For buyers: support multiple selection
+                    selected_product_id = selection  # Store all selections
+                    num_selected = len(selection)
+
+                    # Enable add to cart button
+                    btn_add_to_cart.config(state='normal', bg='#27ae60')
+                    add_button_hover_effect(btn_add_to_cart, '#27ae60', get_hover_color('#27ae60'))
+
+                    if num_selected == 1:
+                        status_label.config(text="Đã chọn 1 sản phẩm - Click để thêm vào giỏ!", fg='green')
+                        # Update product details for single selection
+                        product = product_data[selection[0]]
+                        product_name_label.config(text=product["name"])
+
+                        if product['discount'] > 0:
+                            original_price = product['original_price']
+                            discounted_price = original_price * (1 - product['discount'] / 100)
+                            product_price_label.config(
+                                text=f"Giá: {discounted_price:,.0f} VNĐ (-{product['discount']}%)\n"
+                                     f"Giá gốc: {original_price:,.0f} VNĐ",
+                                fg='#e74c3c'
+                            )
+                        else:
+                            product_price_label.config(text=product['price'], fg='#27ae60')
+
+                        desc_text.config(state='normal')
+                        desc_text.delete(1.0, tk.END)
+                        desc_text.insert(1.0, product["description"])
+                        desc_text.config(state='disabled')
+
+                        images = product["images"]
+                        if images:
+                            show_main_image(images[0])
+                            update_thumbnail_gallery(images)
+                        else:
+                            show_main_image(None)
+                            update_thumbnail_gallery([])
                     else:
+                        status_label.config(text=f"Đã chọn {num_selected} sản phẩm - Click để thêm vào giỏ!", fg='green')
+                        product_name_label.config(text=f"{num_selected} sản phẩm đã chọn")
+                        product_price_label.config(text="", fg='#27ae60')
+                        desc_text.config(state='normal')
+                        desc_text.delete(1.0, tk.END)
+                        desc_text.insert(1.0, "Nhiều sản phẩm được chọn. Click thêm vào giỏ để cấu hình từng sản phẩm.")
+                        desc_text.config(state='disabled')
+                        show_main_image(None)
+                        update_thumbnail_gallery([])
+
+                    # Set command for add to cart with all selections
+                    btn_add_to_cart.config(command=lambda: show_multi_product_cart_dialog(selection))
+
+                else:
+                    # For sellers: single selection only
+                    selected_product_id = selection[0]
+                    if selected_product_id in product_data:
                         # Enable delete and edit product buttons with hover effects
                         btn_delete_product.config(state='normal', bg='#e74c3c')
                         add_button_hover_effect(btn_delete_product, '#e74c3c', get_hover_color('#e74c3c'))
@@ -891,71 +1057,43 @@ class ProductView:
                         btn_delete_product.config(command=lambda: delete_product(selected_product_id, product_data[selected_product_id]["name"]))
                         btn_edit_product.config(command=lambda: self.show_edit_product_form(selected_product_id, role, username))
 
-                    # Update product details on the right panel
-                    product = product_data[selected_product_id]
+                        # Update product details on the right panel
+                        product = product_data[selected_product_id]
 
-                    # Update product name
-                    if role == "seller":
+                        # Update product name
                         product_name_label.config(text=f"{product['name']} (SL: {product['quantity']})")
-                    else:
-                        product_name_label.config(text=product["name"])
 
-                    # Update price with discount info
-                    if product['discount'] > 0:
-                        original_price = product['original_price']
-                        discounted_price = original_price * (1 - product['discount'] / 100)
-                        product_price_label.config(
-                            text=f"Giá: {discounted_price:,.0f} VNĐ (-{product['discount']}%)\n"
-                                 f"Giá gốc: {original_price:,.0f} VNĐ",
-                            fg='#e74c3c'
-                        )
-                    else:
-                        product_price_label.config(text=product['price'], fg='#27ae60')
+                        # Update price with discount info
+                        if product['discount'] > 0:
+                            original_price = product['original_price']
+                            discounted_price = original_price * (1 - product['discount'] / 100)
+                            product_price_label.config(
+                                text=f"Giá: {discounted_price:,.0f} VNĐ (-{product['discount']}%)\n"
+                                     f"Giá gốc: {original_price:,.0f} VNĐ",
+                                fg='#e74c3c'
+                            )
+                        else:
+                            product_price_label.config(text=product['price'], fg='#27ae60')
 
-                    # Update description
-                    desc_text.config(state='normal')
-                    desc_text.delete(1.0, tk.END)
-                    desc_text.insert(1.0, product["description"])
-                    desc_text.config(state='disabled')
+                        # Update description
+                        desc_text.config(state='normal')
+                        desc_text.delete(1.0, tk.END)
+                        desc_text.insert(1.0, product["description"])
+                        desc_text.config(state='disabled')
 
-                    # Update images
-                    images = product["images"]
-                    if images:
-                        show_main_image(images[0])  # Show first image as main
-                        update_thumbnail_gallery(images)
-                    else:
-                        show_main_image(None)
-                        update_thumbnail_gallery([])
-
-                    # Update color combo with colors from database for buyer
-                    if role == "buyer":
-                        try:
-                            conn = get_db_connection()
-                            cursor = conn.cursor()
-                            cursor.execute("SELECT MauSac FROM mausac_sp WHERE MaSP = %s", (selected_product_id,))
-                            colors = [row[0] for row in cursor.fetchall()]
-                            if colors:
-                                color_combo['values'] = colors
-                                color_var.set(colors[0])  # Set first color as default
-                            else:
-                                # Fallback to default colors
-                                color_combo['values'] = ["Trắng", "Xanh Dương", "Đen", "Nâu"]
-                                color_var.set("Đen")
-                        except Exception as e:
-                            print(f"Error loading colors: {e}")
-                            # Use default colors on error
-                            color_combo['values'] = ["Trắng", "Xanh Dương", "Đen", "Nâu"]
-                            color_var.set("Đen")
-                        finally:
-                            if cursor:
-                                cursor.close()
-                            if conn:
-                                conn.close()
+                        # Update images
+                        images = product["images"]
+                        if images:
+                            show_main_image(images[0])  # Show first image as main
+                            update_thumbnail_gallery(images)
+                        else:
+                            show_main_image(None)
+                            update_thumbnail_gallery([])
             else:
                 selected_product_id = None
                 if role == "buyer":
                     btn_add_to_cart.config(state='disabled', bg='#95a5a6')
-                    status_label.config(text="Click sản phẩm để thêm vào giỏ hàng", fg='#7f8c8d')
+                    status_label.config(text="Chọn sản phẩm để thêm vào giỏ hàng", fg='#7f8c8d')
                 else:
                     btn_delete_product.config(state='disabled', bg='#95a5a6')
                     btn_edit_product.config(state='disabled', bg='#95a5a6')
@@ -1710,11 +1848,18 @@ class ProductView:
         brand_window.title("Quản lý thương hiệu")
         brand_window.geometry("600x500")
         brand_window.resizable(False, False)
-        brand_window.grab_set()  # Make window modal
 
         # Center the window
+        brand_window.update_idletasks()
+        x = (brand_window.winfo_screenwidth() // 2) - (600 // 2)
+        y = (brand_window.winfo_screenheight() // 2) - (500 // 2)
+        brand_window.geometry(f"+{x}+{y}")
+
+        # Make sure it's on top
         brand_window.transient(self.root)
-        brand_window.focus()
+        brand_window.grab_set()  # Make window modal
+        brand_window.lift()  # Raise to top
+        brand_window.focus_force()  # Force focus
 
         # Header
         header_frame = tk.Frame(brand_window, bg='#9b59b6', height=60)
@@ -1875,27 +2020,37 @@ class ProductView:
             # Create add brand dialog
             add_brand_window = tk.Toplevel(brand_window)
             add_brand_window.title("Thêm thương hiệu mới")
-            add_brand_window.geometry("400x200")
+            add_brand_window.geometry("450x250")  # Increased from 400x200 to 450x250
             add_brand_window.resizable(False, False)
-            add_brand_window.grab_set()
+
+            # Center the dialog
+            add_brand_window.update_idletasks()
+            x = (add_brand_window.winfo_screenwidth() // 2) - (450 // 2)
+            y = (add_brand_window.winfo_screenheight() // 2) - (250 // 2)
+            add_brand_window.geometry(f"+{x}+{y}")
+
+            # Make sure it's on top
             add_brand_window.transient(brand_window)
-            add_brand_window.focus()
+            add_brand_window.grab_set()
+            add_brand_window.lift()  # Raise window to top
+            add_brand_window.focus_force()  # Force focus
 
             # Form
-            form_frame = tk.Frame(add_brand_window)
-            form_frame.pack(fill='both', expand=True, padx=20, pady=20)
+            form_frame = tk.Frame(add_brand_window, bg='white')
+            form_frame.pack(fill='both', expand=True, padx=25, pady=25)
 
             tk.Label(form_frame, text="THÊM THƯƠNG HIỆU MỚI", font=('Arial', 14, 'bold'),
-                     fg='#27ae60').pack(pady=(0, 20))
+                     fg='#27ae60', bg='white').pack(pady=(0, 20))
 
-            tk.Label(form_frame, text="Tên thương hiệu:", font=('Arial', 12, 'bold')).pack(anchor='w')
-            entry_brand_name = tk.Entry(form_frame, font=('Arial', 12), width=30)
-            entry_brand_name.pack(pady=(5, 20), fill='x')
+            tk.Label(form_frame, text="Tên thương hiệu:", font=('Arial', 12, 'bold'),
+                    bg='white').pack(anchor='w', pady=(0, 5))
+            entry_brand_name = tk.Entry(form_frame, font=('Arial', 12), width=35)
+            entry_brand_name.pack(pady=(0, 25), fill='x')
             entry_brand_name.focus()
 
-            # Buttons
-            button_frame_add = tk.Frame(form_frame)
-            button_frame_add.pack(fill='x')
+            # Buttons frame - FIXED AT BOTTOM
+            button_frame_add = tk.Frame(form_frame, bg='white')
+            button_frame_add.pack(fill='x', pady=(10, 0))
 
             def save_brand():
                 brand_name = entry_brand_name.get().strip()
@@ -1940,12 +2095,18 @@ class ProductView:
                     if conn:
                         conn.close()
 
-            tk.Button(button_frame_add, text="💾 Lưu", command=save_brand,
-                     bg='#27ae60', fg='white', font=('Arial', 11, 'bold'),
-                     padx=20, pady=8).pack(side='left', padx=(0, 10))
-            tk.Button(button_frame_add, text="❌ Hủy", command=add_brand_window.destroy,
-                     bg='#95a5a6', fg='white', font=('Arial', 11, 'bold'),
-                     padx=20, pady=8).pack(side='right')
+            # Save and Cancel buttons with hover effects
+            btn_save_brand = tk.Button(button_frame_add, text="💾 Lưu", command=save_brand,
+                                      bg='#27ae60', fg='white', font=('Arial', 12, 'bold'),
+                                      padx=25, pady=10, cursor='hand2', relief='raised', bd=2)
+            btn_save_brand.pack(side='left', padx=(0, 10))
+            add_button_hover_effect(btn_save_brand, '#27ae60', get_hover_color('#27ae60'))
+
+            btn_cancel_brand = tk.Button(button_frame_add, text="❌ Hủy", command=add_brand_window.destroy,
+                                        bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'),
+                                        padx=25, pady=10, cursor='hand2', relief='raised', bd=2)
+            btn_cancel_brand.pack(side='right')
+            add_button_hover_effect(btn_cancel_brand, '#95a5a6', get_hover_color('#95a5a6'))
 
             # Enter key to save
             entry_brand_name.bind('<Return>', lambda e: save_brand())
@@ -1960,6 +2121,10 @@ class ProductView:
     def set_show_cart_callback(self, callback):
         """Set callback for showing cart"""
         self.show_cart_callback = callback
+
+    def set_show_invoice_history_callback(self, callback):
+        """Set callback for showing invoice history"""
+        self.show_invoice_history = callback
 
     def set_logout_callback(self, callback):
         """Set logout callback"""

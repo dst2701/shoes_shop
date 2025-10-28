@@ -322,7 +322,7 @@ class InvoiceView:
             next_number = ((result[0] or 0) + 1) if result else 1
             ma_hd = f"HD{next_number:03d}"
 
-            # Tạo hóa đơn mới
+            # Tạo hóa đơn mới (chỉ lưu ngày)
             current_date = datetime.now().date()
             cursor.execute(
                 """

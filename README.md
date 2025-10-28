@@ -1,104 +1,389 @@
-# Shoes Shop GUI (Tkinter) — Current Status
+# 👟 Shoes Shop Management System - GUI Application
 
-Ứng dụng quản lý cửa hàng giày bằng giao diện đồ họa Tkinter. Dự án hiện đã hoàn thiện hầu hết các chức năng chính: đăng nhập/đăng ký, tìm kiếm và lọc sản phẩm, giỏ hàng đồng bộ với cơ sở dữ liệu, tạo hóa đơn (invoice), và các chức năng dành cho nhân viên (thêm/sửa/xóa sản phẩm, quản lý thương hiệu, báo cáo doanh thu).
+**Ứng dụng quản lý cửa hàng giày với giao diện đồ họa Tkinter**
 
-> Lưu ý: README này mô tả trạng thái hiện tại của repo và cách cấu hình nhanh để chạy trên máy của bạn.
+Dự án hoàn chỉnh với đầy đủ chức năng quản lý bán hàng: đăng nhập/đăng ký phân quyền, giỏ hàng đồng bộ database, quản lý sản phẩm, hóa đơn, lịch sử mua hàng, và báo cáo doanh thu.
 
-## Cấu trúc dự án (thư mục chính)
+> **Last Updated**: October 29, 2025  
+> **Database**: `shopquanao`  
+> **Python Version**: 3.13+
+
+---
+
+## 📁 Cấu Trúc Dự Án
 
 ```
 D:\shop_giay\shoes_shop\
-├── main.py                      # Entry point: khởi chạy ứng dụng GUI
-├── shoes_shop_GUI.py            # (Original/gốc) GUI reference - không chỉnh sửa nếu bạn muốn giữ bản gốc
+├── main.py                           # ✅ Entry point - khởi chạy ứng dụng
+├── shoes_shop_GUI.py                 # 📚 Original reference file (không dùng)
 ├── config/
 │   ├── __init__.py
-│   └── database.py              # Hàm get_db_connection() - chỉnh cấu hình kết nối DB tại đây
-├── models/                      # Model mapping cho bảng database: user, product, cart...
-├── views/                       # Views/GUI modules: product_view, cart_view, invoice_view, ...
-├── utils/                       # Hỗ trợ: image xử lý, validators, v.v.
-├── images/                      # (Nếu có) ảnh tải về / lưu trữ cục bộ
-├── shopquanao09102025.sql       # SQL dump (có thể có nhiều file .sql trong repo)
-├── README.md
-└── tests/ (nếu có)
+│   └── database.py                   # 🔧 Cấu hình kết nối MySQL
+├── models/
+│   ├── __init__.py
+│   ├── user.py                       # Model: User/Login
+│   ├── product.py                    # Model: Product management
+│   └── cart.py                       # Model: Shopping cart
+├── views/
+│   ├── __init__.py
+│   ├── login_view.py                 # 🔐 Login/Register UI
+│   ├── product_view.py               # 🛍️ Product listing (Buyer & Seller)
+│   ├── cart_view.py                  # 🛒 Shopping cart UI
+│   ├── invoice_view.py               # 📄 Invoice preview & payment
+│   ├── invoice_history_view.py       # 📜 Purchase history (NEW)
+│   └── sales_view.py                 # 📊 Sales statistics (Seller)
+├── utils/
+│   ├── __init__.py
+│   ├── image_utils.py                # 🖼️ Image loading (URL/local)
+│   ├── validators.py                 # ✔️ Input validation
+│   └── ui_effects.py                 # ✨ Hover effects, colors
+├── images/                           # 📁 Local image storage
+├── shopquanao09102025.sql            # 💾 Database dump
+├── SQL_QUERIES_DOCUMENTATION.md      # 📖 Complete SQL documentation
+└── README.md                         # 📄 This file
 ```
 
-(Thư mục ở trên là bản tóm tắt; repo chứa thêm các file hỗ trợ và test như `test_database.py`, `test_images.py`, v.v.)
+---
 
-## Tính năng chính hiện tại
+## ✨ Tính Năng Chính
 
-- Đăng ký/Đăng nhập (role: Khách hàng / Nhân viên)
-- Hiển thị danh sách sản phẩm kèm hình ảnh (tải ảnh online hoặc từ thư mục `images/`)
-- Thanh tìm kiếm + bộ lọc theo thương hiệu và giá (tăng/giảm)
-- Giỏ hàng gắn với từng tài khoản và lưu vào DB (`giohang`, `giohangchuasanpham`)
-- Xem chi tiết giỏ hàng, chuyển thành hóa đơn, lưu `hoadon` và `cthoadon`
-- Nhân viên: thêm / sửa / xóa sản phẩm, quản lý thương hiệu, xem báo cáo doanh thu
-- Quản lý kích thước và màu sắc trên GUI (lưu vào cột `Size` và `MauSac` khi thêm vào giỏ/hoá đơn)
+### 👤 **Khách Hàng (Buyer)**
+- ✅ Đăng ký/Đăng nhập tài khoản
+- ✅ Xem danh sách sản phẩm với hình ảnh
+- ✅ Tìm kiếm sản phẩm (theo tên, mã)
+- ✅ Lọc theo thương hiệu, giá
+- ✅ Chọn màu sắc & size cho từng sản phẩm
+- ✅ Thêm nhiều sản phẩm vào giỏ hàng cùng lúc
+- ✅ Xem & chỉnh sửa giỏ hàng
+- ✅ Tạo hóa đơn & thanh toán
+- ✅ Xem lịch sử mua hàng **[NEW]**
+- ✅ Giỏ hàng lưu trữ vĩnh viễn (database)
 
-## Yêu cầu hệ thống
+### 👨‍💼 **Nhân Viên (Seller)**
+- ✅ Đăng nhập tài khoản nhân viên
+- ✅ Quản lý sản phẩm: Thêm/Sửa/Xóa
+- ✅ Upload ảnh (từ URL hoặc local)
+- ✅ Quản lý thương hiệu: Thêm/Xóa
+- ✅ Thiết lập giảm giá tự động (theo ngày nhập hàng)
+- ✅ Xem báo cáo doanh thu theo tháng **[UPDATED]**
+- ✅ Sắp xếp doanh thu: Theo tiền/SL/Mã/Tên **[NEW]**
+- ✅ Quản lý tồn kho
 
-- Python 3.10+ (hoặc phiên bản tương thích với các package đang dùng)
-- MySQL Server
-- Thư viện Python:
-  - pillow
-  - mysql-connector-python
+### 🎨 **UI/UX Features**
+- ✅ Hover effects trên tất cả buttons
+- ✅ Multi-select products (Ctrl+Click)
+- ✅ Scrollable dialogs
+- ✅ Responsive layouts
+- ✅ Professional color scheme
 
-Cài đặt nhanh:
+---
 
-```cmd
-pip install -r requirements.txt
-```
+## 🔧 Yêu Cầu Hệ Thống
 
-Nếu bạn không có file `requirements.txt`, cài thủ công:
+### **Software Requirements:**
+- **Python**: 3.13+ (hoặc 3.10+)
+- **MySQL Server**: 8.0+
+- **OS**: Windows 10/11 (tested)
 
-```cmd
+### **Python Libraries:**
+```bash
 pip install Pillow mysql-connector-python
 ```
 
-Lưu ý: Trên Windows, chạy trong terminal `cmd.exe` hoặc PowerShell; nếu bạn đang dùng virtual environment (.venv) hãy đảm bảo đã kích hoạt nó trước khi cài.
+**Hoặc sử dụng requirements.txt:**
+```bash
+pip install -r requirements.txt
+```
 
-## Cấu hình kết nối MySQL (bắt buộc)
+---
 
-Hiện tại hàm `get_db_connection()` nằm tại `config/database.py`. Mặc định file đang sử dụng cấu hình cục bộ ví dụ (host `127.0.0.1`, user `root`, database `shopgiaydep09102025`).
+## ⚙️ Cấu Hình Database
 
-Cách chỉnh nhanh (khuyến nghị):
+### **1. Import Database**
 
-1. Mở `config/database.py` và sửa trực tiếp các tham số `host`, `user`, `password`, `database` theo MySQL của bạn.
+```bash
+mysql -u root -p shopquanao < shopquanao09102025.sql
+```
 
-2. (Tốt hơn) Sử dụng biến môi trường để tránh lưu mật khẩu trong mã nguồn. Ví dụ (thay thế nội dung `get_db_connection()`):
+**Hoặc trong MySQL Workbench:**
+1. Server → Data Import
+2. Import from Self-Contained File
+3. Chọn `shopquanao09102025.sql`
+4. Start Import
 
+### **2. Cấu Hình Kết Nối**
+
+**File:** `config/database.py`
+
+```python
+def get_db_connection():
+    return mysql.connector.connect(
+        host='127.0.0.1',           # MySQL host
+        user='root',                # MySQL username
+        password='your_password',   # MySQL password
+        database='shopquanao'       # Database name
+    )
+```
+
+**⚠️ BẢO MẬT:** Không commit password lên Git!
+
+**Sử dụng biến môi trường (khuyến nghị):**
 ```python
 import os
 import mysql.connector
 
 def get_db_connection():
     return mysql.connector.connect(
-        host=os.environ.get('SHOP_DB_HOST', '127.0.0.1'),
-        user=os.environ.get('SHOP_DB_USER', 'root'),
-        password=os.environ.get('SHOP_DB_PASSWORD', ''),
-        database=os.environ.get('SHOP_DB_NAME', 'shopgiaydep09102025'),
+        host=os.getenv('DB_HOST', '127.0.0.1'),
+        user=os.getenv('DB_USER', 'root'),
+        password=os.getenv('DB_PASSWORD', ''),
+        database=os.getenv('DB_NAME', 'shopquanao')
     )
 ```
 
-Với cách này, bạn có thể trước khi chạy app set biến môi trường trong cmd.exe như:
-
+**Set biến môi trường (Windows CMD):**
 ```cmd
-set SHOP_DB_HOST=127.0.0.1
-set SHOP_DB_USER=root
-set SHOP_DB_PASSWORD=your_password
-set SHOP_DB_NAME=shopgiaydep09102025
+set DB_HOST=127.0.0.1
+set DB_USER=root
+set DB_PASSWORD=your_password
+set DB_NAME=shopquanao
+```
+
+---
+
+## 🚀 Chạy Ứng Dụng
+
+### **Phương Pháp 1: Trực Tiếp**
+```cmd
+cd D:\shop_giay\shoes_shop
 python main.py
 ```
 
+### **Phương Pháp 2: Virtual Environment (Khuyến nghị)**
+```cmd
+cd D:\shop_giay\shoes_shop
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
+```
 
-## Database: các bảng quan trọng
+**Lưu ý**: Nếu thấy `(.venv)` ở đầu command prompt → đang trong virtual environment
 
-Tùy vào SQL dump của bạn nhưng thông thường dự án sử dụng các bảng sau (ví dụ):
-- `khachhang` (MaKH, Username, Password, HoTen, DiaChi, DienThoai, ...)
-- `nhanvien` (MaNV, Username, Password, HoTen, ...)
-- `sanpham` (MaSP, TenSP, DonGia, SoLuong, MauSac, Size, GiamGia, NgayNhapHang, ...)
-- `thuonghieu` (MaTH, TenTH)
-- `giohang` (MaGH, MaKH)
-- `giohangchuasanpham` (MaGH, MaSP, SoLuong, MauSac, Size, DonGia, ...)
+---
+
+## 💾 Database Schema
+
+### **Bảng Chính:**
+
+1. **khachhang** - Thông tin khách hàng
+   - MaKH, TenKH, SDT, DiaChi, TenDN, MatKhau
+
+2. **nhanvien** - Thông tin nhân viên
+   - MaNV, TenNV, TenDN, MatKhau
+
+3. **sanpham** - Sản phẩm
+   - MaSP, TenSP, Gia, MoTa, MaTH, SoLuong, **NgayNhapHang**
+
+4. **thuonghieu** - Thương hiệu
+   - MaTH, TenTH
+
+5. **url_sp** - Ảnh sản phẩm
+   - MaSP, URLAnh (hỗ trợ URL và local path)
+
+6. **mausac_sp** - Màu sắc sản phẩm
+   - MaSP, MauSac (dynamic table)
+
+7. **giohang** - Giỏ hàng
+   - MaGH, MaKH (1-1 relationship)
+
+8. **giohangchuasanpham** - Chi tiết giỏ hàng
+   - MaGH, MaSP, MauSac, Size, SoLuong
+
+9. **hoadon** - Hóa đơn
+   - MaHD, MaKH, MaNV, NgayLap (DATE format)
+
+10. **cthoadon** - Chi tiết hóa đơn
+    - MaHD, MaSP, TenSP, MauSac, Size, SoLuongMua, DonGia, ThanhTien
+
+**📖 Chi tiết**: Xem `SQL_QUERIES_DOCUMENTATION.md`
+
+---
+
+## 🎯 Hướng Dẫn Sử Dụng
+
+### **Đăng Nhập Lần Đầu**
+
+**Tài khoản test (nếu database đã có data mẫu):**
+- **Khách hàng**: Username/Password theo dữ liệu trong bảng `khachhang`
+- **Nhân viên**: Username/Password theo dữ liệu trong bảng `nhanvien`
+
+**Hoặc đăng ký tài khoản mới:**
+1. Click "Đăng ký"
+2. Chọn role (Khách hàng/Nhân viên)
+3. Điền thông tin
+4. Đăng nhập
+
+### **Workflow Khách Hàng**
+```
+Đăng nhập → Xem sản phẩm → Chọn màu/size → Thêm vào giỏ
+→ Xem giỏ hàng → Xem hóa đơn → Thanh toán → Xem lịch sử
+```
+
+### **Workflow Nhân Viên**
+```
+Đăng nhập → Quản lý sản phẩm → Quản lý thương hiệu
+→ Xem báo cáo doanh thu → Sắp xếp theo tiêu chí
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### **Lỗi Kết Nối Database**
+```
+mysql.connector.errors.InterfaceError
+```
+**Giải pháp:**
+1. Kiểm tra MySQL Server đang chạy
+2. Xác nhận thông tin trong `config/database.py`
+3. Test connection: `mysql -u root -p shopquanao`
+
+### **Lỗi Import Module**
+```
+ModuleNotFoundError: No module named 'PIL'
+```
+**Giải pháp:**
+```cmd
+pip install Pillow mysql-connector-python
+```
+
+### **Ảnh Không Hiển Thị**
+**Nguyên nhân:** URL không hợp lệ hoặc file không tồn tại
+
+**Giải pháp:**
+1. Kiểm tra URL trong bảng `url_sp`
+2. Kiểm tra thư mục `images/` có ảnh không
+3. Test load ảnh: Xem `utils/image_utils.py`
+
+### **Giỏ Hàng Trống Sau Khi Đăng Xuất**
+**Lưu ý:** Giỏ hàng được lưu vào database!
+- Đăng nhập lại → Giỏ hàng vẫn còn
+- Chỉ mất nếu click "Thanh toán" (đã chuyển thành hóa đơn)
+
+---
+
+## 📚 Tài Liệu Tham Khảo
+
+| File | Mô Tả |
+|------|-------|
+| `SQL_QUERIES_DOCUMENTATION.md` | Tất cả SQL queries với giải thích |
+| `PYTHON_VS_MYSQL_SYNTAX.md` | Hướng dẫn chuyển đổi %s sang MySQL |
+| `QUICK_START_GUIDE.md` | Hướng dẫn khởi động nhanh |
+| `SQL_QUERIES_FOR_MYSQL_WORKBENCH.sql` | Queries chạy trực tiếp trong MySQL |
+
+---
+
+## 🔒 Bảo Mật
+
+**⚠️ QUAN TRỌNG:**
+- ❌ **KHÔNG** commit password vào Git
+- ✅ Sử dụng biến môi trường
+- ✅ Tạo file `.env` (thêm vào `.gitignore`)
+- ✅ Mã hóa password trong database
+
+**File `.gitignore` nên có:**
+```
+.env
+config/local_settings.py
+*.pyc
+__pycache__/
+.venv/
+```
+
+---
+
+## 📊 Tính Năng Nổi Bật
+
+### **1. Multi-Product Cart Dialog**
+- Chọn nhiều sản phẩm cùng lúc (Ctrl+Click)
+- Cấu hình màu/size/số lượng cho từng sản phẩm
+- Scrollable dialog
+- Validation số lượng tồn kho
+
+### **2. Dynamic Discount System**
+- Tự động giảm giá sản phẩm > 6 tháng: **10%**
+- Tự động giảm giá sản phẩm > 12 tháng: **15%**
+- Hiển thị rõ ràng: `3,500,000 VNĐ (-10%)`
+
+### **3. Invoice History**
+- Xem tất cả đơn hàng đã mua
+- Chi tiết từng hóa đơn
+- Hiển thị giá lúc mua (không phải giá hiện tại)
+
+### **4. Advanced Sales Report**
+- Báo cáo theo tháng/năm
+- Sắp xếp: Doanh thu/SL/Mã/Tên
+- Gộp tất cả màu sắc/size
+- Chính xác từ giá bán thực tế
+
+---
+
+## 🛠️ Development
+
+### **Project Structure Philosophy:**
+- **MVC Pattern**: Models, Views, separate logic
+- **Modular**: Each view is independent
+- **Database-first**: Cart, invoice stored in DB
+- **Professional UI**: Hover effects, colors, layouts
+
+### **Key Technologies:**
+- **GUI**: Tkinter (Python standard library)
+- **Database**: MySQL 8.0+
+- **Image**: Pillow (PIL fork)
+- **Security**: Password hashing, SQL injection prevention
+
+---
+
+## 📝 Changelog
+
+### **Version 2.0 (Current) - October 29, 2025**
+- ✅ Added Invoice History View
+- ✅ Multi-product cart dialog
+- ✅ Dynamic sorting in sales report
+- ✅ Removed unit price column (focus on revenue)
+- ✅ Hover effects on all buttons
+- ✅ Brand management UI fixes
+- ✅ Discount system based on import date
+
+### **Version 1.0 - October 2025**
+- ✅ Basic product management
+- ✅ Cart functionality
+- ✅ Invoice generation
+- ✅ Sales statistics
+
+---
+
+## 👨‍💻 Contributors
+
+**Project by**: [Your Name]  
+**Database**: MySQL  
+**Framework**: Python Tkinter  
+**Last Updated**: October 29, 2025
+
+---
+
+## 📞 Support
+
+Nếu gặp vấn đề:
+1. Kiểm tra `SQL_QUERIES_DOCUMENTATION.md`
+2. Xem phần Troubleshooting
+3. Check database connection
+4. Verify Python libraries installed
+
+---
+
+**🎉 Project hoàn chỉnh và sẵn sàng sử dụng!**
 - `hoadon` (MaHD, MaKH, NgayLap, TongTien, ...)
 - `cthoadon` (MaHD, MaSP, SoLuong, DonGia, MauSac, Size, ...)
 

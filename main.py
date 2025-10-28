@@ -3,6 +3,7 @@ from views.login_view import LoginView
 from views.product_view import ProductView
 from views.cart_view import CartView
 from views.invoice_view import InvoiceView
+from views.invoice_history_view import InvoiceHistoryView
 
 class ShoesShopApp:
     def __init__(self):
@@ -14,6 +15,7 @@ class ShoesShopApp:
         self.product_view = ProductView(self.root)
         self.cart_view = CartView(self.root)
         self.invoice_view = InvoiceView(self.root)
+        self.invoice_history_view = InvoiceHistoryView(self.root)
 
         # Set up callbacks between views
         self.setup_callbacks()
@@ -34,6 +36,7 @@ class ShoesShopApp:
 
         # Product view callbacks
         self.product_view.set_show_cart_callback(self.show_cart)
+        self.product_view.set_show_invoice_history_callback(self.show_invoice_history)
         self.product_view.set_logout_callback(self.logout)
 
         # Cart view callbacks
@@ -55,6 +58,10 @@ class ShoesShopApp:
     def show_cart(self, username, role):
         """Show cart page"""
         self.cart_view.show_cart(username, role, self.show_products)
+
+    def show_invoice_history(self, role, username):
+        """Show invoice history page"""
+        self.invoice_history_view.show(role, username, self.show_products)
 
     def logout(self):
         """Handle logout"""

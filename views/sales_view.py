@@ -79,6 +79,25 @@ class SalesView:
         # Add hover effect
         add_button_hover_effect(btn_view, '#3498db', get_hover_color('#3498db'))
 
+        # Sort filter frame
+        sort_frame = tk.Frame(content_frame, bg='white')
+        sort_frame.pack(fill='x', pady=(0, 20))
+
+        tk.Label(sort_frame, text="Sắp xếp theo:", font=('Arial', 12, 'bold'),
+                bg='white').pack(side='left', padx=(0, 10))
+
+        # Sort dropdown
+        sort_var = tk.StringVar(value="Doanh thu (Cao → Thấp)")
+        sort_combo = ttk.Combobox(sort_frame, textvariable=sort_var,
+                                  values=[
+                                      "Doanh thu (Cao → Thấp)",
+                                      "Số lượng bán (Cao → Thấp)",
+                                      "Mã sản phẩm (A → Z)",
+                                      "Tên sản phẩm (A → Z)"
+                                  ],
+                                  state='readonly', width=30, font=('Arial', 11))
+        sort_combo.pack(side='left')
+
         # Summary frame
         summary_frame = tk.Frame(content_frame, bg='#ecf0f1', relief='solid', bd=1)
         summary_frame.pack(fill='x', pady=(0, 20))
@@ -104,8 +123,8 @@ class SalesView:
         vsb = tk.Scrollbar(tree_frame, orient="vertical")
         hsb = tk.Scrollbar(tree_frame, orient="horizontal")
 
-        # Treeview
-        columns = ("STT", "Mã SP", "Tên sản phẩm", "SL bán", "Đơn giá", "Doanh thu")
+        # Treeview - 5 columns (removed "Đơn giá")
+        columns = ("STT", "Mã SP", "Tên sản phẩm", "SL bán", "Doanh thu")
         tree = ttk.Treeview(tree_frame, columns=columns, show='headings',
                            yscrollcommand=vsb.set, xscrollcommand=hsb.set, height=15)
 
@@ -121,16 +140,14 @@ class SalesView:
         tree.heading("Mã SP", text="Mã SP")
         tree.heading("Tên sản phẩm", text="Tên sản phẩm")
         tree.heading("SL bán", text="SL bán")
-        tree.heading("Đơn giá", text="Đơn giá")
         tree.heading("Doanh thu", text="Doanh thu")
 
         # Column widths
-        tree.column("STT", width=50, anchor='center')
-        tree.column("Mã SP", width=100, anchor='center')
-        tree.column("Tên sản phẩm", width=300, anchor='w')
-        tree.column("SL bán", width=100, anchor='center')
-        tree.column("Đơn giá", width=150, anchor='e')
-        tree.column("Doanh thu", width=150, anchor='e')
+        tree.column("STT", width=60, anchor='center')
+        tree.column("Mã SP", width=120, anchor='center')
+        tree.column("Tên sản phẩm", width=350, anchor='w')
+        tree.column("SL bán", width=120, anchor='center')
+        tree.column("Doanh thu", width=200, anchor='e')
 
         # Configure treeview style for larger font
         style = ttk.Style()
@@ -138,29 +155,44 @@ class SalesView:
         style.configure("Treeview.Heading", font=('Arial', 12, 'bold'))
 
         def load_sales_data():
-            """Load sales data for selected month/year"""
+            """Load sales data for selected month/year with sorting"""
             try:
                 month = int(month_var.get())
                 year = int(year_var.get())
+                sort_option = sort_var.get()
 
                 conn = get_db_connection()
                 cursor = conn.cursor()
 
-                # Get sales data from cthoadon joined with hoadon and sanpham
-                cursor.execute("""
+                # Determine ORDER BY clause based on sort option
+                if sort_option == "Doanh thu (Cao → Thấp)":
+                    order_by = "total_sales DESC"
+                elif sort_option == "Số lượng bán (Cao → Thấp)":
+                    order_by = "total_quantity DESC"
+                elif sort_option == "Mã sản phẩm (A → Z)":
+                    order_by = "ct.MaSP ASC"
+                elif sort_option == "Tên sản phẩm (A → Z)":
+                    order_by = "ct.TenSP ASC"
+                else:
+                    order_by = "total_sales DESC"  # Default
+
+                # Get sales data from cthoadon joined with hoadon
+                # Group by product (MaSP, TenSP) - combining all colors and sizes
+                # Use ThanhTien from cthoadon (actual sold price)
+                query = f"""
                     SELECT 
                         ct.MaSP,
-                        sp.TenSP,
+                        ct.TenSP,
                         SUM(ct.SoLuongMua) as total_quantity,
-                        sp.Gia as unit_price,
-                        SUM(ct.SoLuongMua * sp.Gia) as total_sales
+                        SUM(ct.ThanhTien) as total_sales
                     FROM cthoadon ct
                     INNER JOIN hoadon hd ON ct.MaHD = hd.MaHD
-                    INNER JOIN sanpham sp ON ct.MaSP = sp.MaSP
                     WHERE MONTH(hd.NgayLap) = %s AND YEAR(hd.NgayLap) = %s
-                    GROUP BY ct.MaSP, sp.TenSP, sp.Gia
-                    ORDER BY total_sales DESC
-                """, (month, year))
+                    GROUP BY ct.MaSP, ct.TenSP
+                    ORDER BY {order_by}
+                """
+
+                cursor.execute(query, (month, year))
 
                 sales_data = cursor.fetchall()
 
@@ -173,7 +205,7 @@ class SalesView:
                 total_quantity = 0
 
                 # Populate treeview
-                for idx, (ma_sp, ten_sp, quantity, unit_price, sales) in enumerate(sales_data, 1):
+                for idx, (ma_sp, ten_sp, quantity, sales) in enumerate(sales_data, 1):
                     total_revenue += sales
                     total_quantity += quantity
 
@@ -182,7 +214,6 @@ class SalesView:
                         ma_sp,
                         ten_sp,
                         f"{quantity:,}",
-                        f"{unit_price:,.0f} VNĐ",
                         f"{sales:,.0f} VNĐ"
                     ))
 
@@ -205,6 +236,9 @@ class SalesView:
 
         # Bind view button
         btn_view.config(command=load_sales_data)
+
+        # Bind sort combo to reload data when changed
+        sort_combo.bind('<<ComboboxSelected>>', lambda e: load_sales_data())
 
         # Load data for current month by default
         load_sales_data()
