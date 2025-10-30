@@ -1,1191 +1,359 @@
 # 📊 SQL QUERIES DOCUMENTATION - SHOES SHOP PROJECT
 
-**Database**: `shopquanao`  
-**Project**: Shoes Shop Management System  
+**Database**: shopquanao (project local DB)
+**Project**: Shoes Shop Management System
 **Last Updated**: October 29, 2025
 
 ---
 
 ## TABLE OF CONTENTS
-1. [Database Overview](#database-overview)
-2. [Product View Queries](#product-view)
-3. [Cart View Queries](#cart-view)
-4. [Invoice View Queries](#invoice-view)
-5. [Invoice History View Queries](#invoice-history-view)
-6. [Sales View Queries](#sales-view)
-7. [Product Model Queries](#product-model)
-8. [Login/Registration Queries](#login-registration)
-9. [Database Schema](#database-schema)
+1. [Overview & placeholders](#overview--placeholders)
+2. [Database Schema (current)](#database-schema-current)
+3. [Common patterns & notes](#common-patterns--notes)
+4. [Product View queries](#product-view-queries)
+5. [Cart View queries](#cart-view-queries)
+6. [Invoice / Payment queries](#invoice--payment-queries)
+7. [Invoice History queries](#invoice-history-queries)
+8. [Sales / Statistics queries](#sales--statistics-queries)
+9. [Login / Registration queries](#login--registration-queries)
+10. [Model / Utility queries](#model--utility-queries)
+11. [Appendix: Running queries in MySQL Workbench](#appendix-running-queries-in-mysql-workbench)
 
 ---
 
-## DATABASE OVERVIEW
+## Overview & placeholders
+- This document lists the SQL queries used across the GUI project (views and models).
+- All queries in the Python code use parameterized placeholders ("%s") for safety with the MySQL connector. When running queries directly in MySQL Workbench, replace `%s` with a properly quoted literal (e.g. 'username').
 
-### Tables in the System:
-1. **khachhang** - Customer information
-2. **nhanvien** - Employee/Seller information
-3. **sanpham** - Product information
-4. **thuonghieu** - Brand information
-5. **url_sp** - Product images (URLs)
-6. **mausac_sp** - Product available colors (dynamic table)
-7. **giohang** - Shopping cart (one per customer)
-8. **giohangchuasanpham** - Cart items (with color, size, quantity)
-9. **hoadon** - Invoice/Order headers
-10. **cthoadon** - Invoice/Order details (items purchased)
+Example Python usage:
+
+    cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
+
+Equivalent in Workbench:
+
+    SELECT MaKH FROM khachhang WHERE TenDN = 'john_doe';
 
 ---
 
-## ⚠️ IMPORTANT: About the `%s` Placeholders
+## Database schema (current)
+This section summarizes the relevant tables and the important columns used by the application (only columns used by the code are listed).
 
-### Understanding the Syntax
+- khachhang
+  - MaKH (PK), TenKH, SDT, DiaChi, TenDN, MatKhau
 
-In this documentation, you'll see queries like:
-```sql
-SELECT MaKH FROM khachhang WHERE TenDN = %s
-```
+- nhanvien
+  - MaNV (PK), TenNV, TenDN, MatKhau
 
-**The `%s` is NOT MySQL syntax** - it's a **placeholder** used by Python's MySQL connector library (like `mysql-connector-python` or `pymysql`).
+- thuonghieu
+  - MaTH (PK), TenTH, MoTa
 
-### Two Different Contexts:
+- sanpham
+  - MaSP (PK), TenSP, Gia, MoTa, MaTH (FK), SoLuong, NgayNhapHang, [optional GiamGia]
 
-#### 1️⃣ **In Python/GUI Code** (How it's used in the project):
-```python
-cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
-#                                                        ↑         ↑
-#                                                   Placeholder   Actual value
-```
-The `%s` gets **automatically replaced** with the actual value (safely escaped to prevent SQL injection).
+- url_sp
+  - MaSP (FK), URLAnh
 
-#### 2️⃣ **In MySQL Workbench** (How YOU should run it):
-```sql
-SELECT MaKH FROM khachhang WHERE TenDN = 'john_doe';
---                                        ↑
---                                   Actual value in quotes
-```
+- mausac_sp (optional/dynamic)
+  - MaSP (FK), MauSac
 
-### Quick Reference:
+- giohang
+  - MaGH (PK), MaKH (FK)  -- ONE cart per customer; unique constraint on MaKH
 
-| Python Code | MySQL Workbench |
-|-------------|-----------------|
-| `WHERE MaSP = %s` | `WHERE MaSP = 'SP001'` |
-| `WHERE Gia > %s` | `WHERE Gia > 1000000` |
-| `WHERE TenDN = %s` | `WHERE TenDN = 'username'` |
-| `VALUES (%s, %s, %s)` | `VALUES ('SP001', 'Nike', 3500000)` |
+- giohangchuasanpham
+  - MaGH (FK), MaSP (FK), MauSac, Size, SoLuong  -- PRIMARY KEY (MaGH, MaSP, MauSac, Size)
 
-### 📁 Ready-to-Run SQL File
+- hoadon
+  - MaHD (PK), MaKH (FK), MaNV (FK optional), NgayLap (DATE)
 
-I've created a separate file **`SQL_QUERIES_FOR_MYSQL_WORKBENCH.sql`** with all queries converted to actual MySQL syntax that you can run directly in MySQL Workbench!
+- cthoadon
+  - MaHD (FK), MaSP (FK), TenSP, MauSac, Size, SoLuongMua, DonGia, ThanhTien
+  - PRIMARY KEY (MaHD, MaSP, MauSac, Size)
+
+Notes:
+- `SoLuongMua` is the quantity in `cthoadon` (not `SoLuong`). This is the column used in invoice detail queries.
+- `SoLuong` in `sanpham` is the current inventory.
+- The `GiamGia` column may or may not exist in some local DB copies; code guards for its absence where possible.
 
 ---
 
-## PRODUCT VIEW
+## Common patterns & notes
+- ID generation patterns in the app use SQL picks like:
 
-### 1. Load Cart from Database
-**Module**: `views/product_view.py`  
-**Function**: `load_cart_from_database()`
+    SELECT MAX(CAST(SUBSTRING(MaSP, 3) AS UNSIGNED)) FROM sanpham WHERE MaSP LIKE 'SP%'
 
-```sql
--- Get customer ID from username
-SELECT MaKH FROM khachhang WHERE TenDN = %s
+  then add 1 and format as SP###.
 
--- Get cart ID from customer ID
-SELECT MaGH FROM giohang WHERE MaKH = %s
-
--- Get all products in cart
-SELECT MaSP, SoLuong FROM giohangchuasanpham WHERE MaGH = %s
-```
-
-**Purpose**: Load user's cart items when they log in
-
-**Returns**: List of (MaSP, SoLuong) tuples
+- For creating carts on registration, the app creates a `giohang` row with a new MaGH and the user's MaKH.
+- Cart items do NOT decrement inventory when added. Inventory is decremented only when an invoice is successfully paid.
+- All DB modifications use parameterized statements (`%s`) in Python code.
 
 ---
 
-### 2. Refresh Brand Filter
-**Module**: `views/product_view.py`  
-**Function**: `refresh_brand_filter()`
+## Product view queries
+Module: views/product_view.py (and related model functions)
 
-```sql
-SELECT DISTINCT TenTH FROM thuonghieu ORDER BY TenTH
-```
+1) Load products with brand and image URLs
 
-**Purpose**: Get list of all brands for the filter dropdown
+    SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, th.TenTH, sp.SoLuong, sp.NgayNhapHang
+    FROM sanpham sp
+    LEFT JOIN thuonghieu th ON sp.MaTH = th.MaTH
+    ORDER BY sp.MaSP
 
-**Returns**: List of brand names
+2) Load all brands for filter dropdown
 
----
+    SELECT MaTH, TenTH FROM thuonghieu ORDER BY TenTH
 
-### 3. Update Cart Count
-**Module**: `views/product_view.py`  
-**Function**: `update_cart_button()`
+3) Load images for product gallery
 
-```sql
--- Get customer ID
-SELECT MaKH FROM khachhang WHERE TenDN = %s
+    SELECT MaSP, URLAnh FROM url_sp WHERE MaSP = %s ORDER BY URLAnh
 
--- Get cart ID
-SELECT MaGH FROM giohang WHERE MaKH = %s
+4) Search (by name OR code) + optional brand filter + price sort
 
--- Calculate total items in cart
-SELECT SUM(SoLuong) FROM giohangchuasanpham WHERE MaGH = %s
-```
+    SELECT s.MaSP, s.TenSP, s.Gia, s.MoTa, t.TenTH, s.SoLuong
+    FROM sanpham s
+    LEFT JOIN thuonghieu t ON s.MaTH = t.MaTH
+    WHERE (s.TenSP LIKE %s OR s.MaSP LIKE %s)
+      [AND t.TenTH = %s]
+    ORDER BY [s.Gia ASC | s.Gia DESC | s.TenSP]
 
-**Purpose**: Display total number of items in cart on button
+5) Generate brand ID (utility used when adding brand)
 
-**Returns**: Total quantity of items in cart
+    SELECT MAX(CAST(SUBSTRING(MaTH, 3) AS UNSIGNED)) FROM thuonghieu WHERE MaTH LIKE 'TH%'
 
----
+6) Delete product and its images
 
-### 4. Load Products with Brands and Images
-**Module**: `views/product_view.py`  
-**Function**: `show_shoes()`
-
-```sql
--- Get all products with brand info
-SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, th.TenTH, sp.SoLuong, sp.NgayNhapHang
-FROM sanpham sp
-LEFT JOIN thuonghieu th ON sp.MaTH = th.MaTH
-ORDER BY sp.MaSP
-
--- Get all brands for filter
-SELECT DISTINCT TenTH FROM thuonghieu ORDER BY TenTH
-
--- Get all product images
-SELECT MaSP, URLAnh FROM url_sp ORDER BY MaSP
-```
-
-**Purpose**: Load all products with their details, brands, and images for display
-
-**Returns**: Complete product catalog with images
+    DELETE FROM url_sp WHERE MaSP = %s
+    DELETE FROM sanpham WHERE MaSP = %s
 
 ---
 
-### 5. Check Product Stock
-**Module**: `views/product_view.py`  
-**Function**: `add_to_cart()`
+## Cart view queries
+Module: views/cart_view.py
 
-```sql
-SELECT SoLuong FROM sanpham WHERE MaSP = %s
-```
+1) Get customer's MaKH and MaGH
 
-**Purpose**: Check available stock before adding to cart
+    SELECT MaKH FROM khachhang WHERE TenDN = %s
+    SELECT MaGH FROM giohang WHERE MaKH = %s
 
-**Returns**: Current stock quantity
+2) Load cart items for display (with product info)
 
----
+    SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.MauSac, ghsp.Size, ghsp.SoLuong,
+           (sp.Gia * ghsp.SoLuong) as ThanhTien
+    FROM giohangchuasanpham ghsp
+    JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
+    WHERE ghsp.MaGH = %s
+    ORDER BY sp.TenSP
 
-### 6. Add Product to Cart (with Stock Validation)
-**Module**: `views/product_view.py`  
-**Function**: `add_to_cart_with_quantity()`
+3) Remove single item from cart (by product + color + size)
 
-```sql
--- Get customer ID
-SELECT MaKH FROM khachhang WHERE TenDN = %s
+    DELETE FROM giohangchuasanpham
+    WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
 
--- Get or check cart exists
-SELECT MaGH FROM giohang WHERE MaKH = %s
+4) Clear entire cart
 
--- Create new cart if doesn't exist
-SELECT MAX(CAST(SUBSTRING(MaGH, 3) AS UNSIGNED)) FROM giohang
-INSERT INTO giohang (MaGH, MaKH) VALUES (%s, %s)
+    DELETE FROM giohangchuasanpham WHERE MaGH = %s
 
--- Get current stock
-SELECT SoLuong FROM sanpham WHERE MaSP = %s
+5) Get cart count (sum of SoLuong for this user's cart)
 
--- Calculate total quantity in all carts (across all users)
-SELECT SUM(ghsp.SoLuong) 
-FROM giohangchuasanpham ghsp
-WHERE ghsp.MaSP = %s
+    SELECT SUM(SoLuong) FROM giohangchuasanpham WHERE MaGH = %s
 
--- Check if user already has this item (with specific color/size)
-SELECT SoLuong FROM giohangchuasanpham 
-WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
-
--- Update existing cart item
-UPDATE giohangchuasanpham 
-SET SoLuong = %s 
-WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
-
--- OR Insert new cart item
-INSERT INTO giohangchuasanpham (MaGH, MaSP, MauSac, Size, SoLuong)
-VALUES (%s, %s, %s, %s, %s)
-```
-
-**Purpose**: Add product to cart with comprehensive stock validation across all users
-
-**Validation Logic**:
-- Checks total stock available
-- Calculates total quantity already in all carts
-- Prevents overselling by validating remaining stock
-- Supports color and size variants
+Notes:
+- Adding to cart writes into `giohangchuasanpham` so the cart persists across program restarts.
+- Color and Size are stored in `MauSac` and `Size` columns.
 
 ---
 
-### 7. Delete Product (Seller)
-**Module**: `views/product_view.py`  
-**Function**: `delete_product()`
+## Invoice / Payment queries
+Module: views/invoice_view.py
 
-```sql
--- Delete product images first (cascade)
-DELETE FROM url_sp WHERE MaSP = %s
+1) Prepare invoice preview (get customer address & phone)
 
--- Delete product
-DELETE FROM sanpham WHERE MaSP = %s
-```
+    SELECT DiaChi, SDT, MaKH FROM khachhang WHERE TenDN = %s
 
-**Purpose**: Remove product and its images from database
+2) Generate next invoice ID (preview)
 
-**Note**: Deletes in correct order to maintain referential integrity
+    SELECT MAX(CAST(SUBSTRING(MaHD, 3) AS UNSIGNED)) FROM hoadon WHERE MaHD LIKE 'HD%'
 
----
+3) Full payment transaction (high-level steps and queries)
+- Begin transaction in Python
 
-### 8. Load Product Colors Dynamically
-**Module**: `views/product_view.py`  
-**Function**: `on_product_select_combined()`
+- Create invoice header
 
-```sql
-SELECT MauSac FROM mausac_sp WHERE MaSP = %s
-```
+    INSERT INTO hoadon (MaHD, MaKH, NgayLap) VALUES (%s, %s, %s)
 
-**Purpose**: Load available colors for selected product
+- Read customer's cart items
 
-**Returns**: List of available colors for the product
+    SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.SoLuong, ghsp.MauSac, ghsp.Size
+    FROM giohangchuasanpham ghsp
+    JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
+    WHERE ghsp.MaGH = %s
 
-**Fallback**: Returns default colors (Trắng, Xanh Dương, Đen, Nâu) if no colors found
+- For each grouped item (grouping by MaSP, MauSac, Size):
 
----
+    INSERT INTO cthoadon (MaHD, MaSP, TenSP, MauSac, Size, SoLuongMua, DonGia, ThanhTien)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
 
-### 9. Add New Product
-**Module**: `views/product_view.py`  
-**Function**: `save_product()`
+- Decrease inventory safely (prevent negative quantities)
 
-```sql
--- Create color table if not exists
-CREATE TABLE IF NOT EXISTS mausac_sp (
-    MaSP VARCHAR(30) NOT NULL,
-    MauSac VARCHAR(100) NOT NULL,
-    PRIMARY KEY (MaSP, MauSac),
-    FOREIGN KEY (MaSP) REFERENCES sanpham(MaSP) ON DELETE CASCADE
-)
+    UPDATE sanpham
+    SET SoLuong = GREATEST(0, SoLuong - %s)
+    WHERE MaSP = %s
 
--- Generate new product ID
-SELECT MAX(CAST(SUBSTRING(MaSP, 3) AS UNSIGNED)) FROM sanpham WHERE MaSP LIKE 'SP%'
+- After all items processed, clear customer's cart
 
--- Insert product
-INSERT INTO sanpham (MaSP, TenSP, Gia, MoTa, MaTH, SoLuong, NgayNhapHang)
-VALUES (%s, %s, %s, %s, %s, %s, %s)
+    DELETE FROM giohangchuasanpham WHERE MaGH = %s
 
--- Insert colors (multiple inserts)
-INSERT INTO mausac_sp (MaSP, MauSac) VALUES (%s, %s)
+- Commit transaction
 
--- Insert image URLs (multiple inserts)
-INSERT INTO url_sp (MaSP, URLAnh) VALUES (%s, %s)
-```
-
-**Purpose**: Add new product with colors and images
-
-**ID Generation Pattern**: SP001, SP002, SP003, etc.
+Notes and validations:
+- Before creating invoice lines, code checks stock availability using `sanpham.SoLuong` and also considers quantities already in other carts to avoid overselling.
+- `GREATEST(0, SoLuong - %s)` is used to avoid negative inventory; code also verifies post-update value.
 
 ---
 
-### 10. Update Product
-**Module**: `views/product_view.py`  
-**Function**: `show_edit_product_form()` and `update_product()`
+## Invoice history queries
+Module: views/invoice_history_view.py
 
-```sql
--- Get product details
-SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, sp.MaTH, sp.SoLuong, th.TenTH, sp.NgayNhapHang
-FROM sanpham sp
-LEFT JOIN thuonghieu th ON sp.MaTH = th.MaTH
-WHERE sp.MaSP = %s
+1) Load invoice history for a customer (aggregated totals)
 
--- Get product images
-SELECT URLAnh FROM url_sp WHERE MaSP = %s
+    SELECT hd.MaHD, hd.NgayLap, SUM(ct.ThanhTien) AS TongTien, SUM(ct.SoLuongMua) AS TongSL
+    FROM hoadon hd
+    INNER JOIN cthoadon ct ON hd.MaHD = ct.MaHD
+    WHERE hd.MaKH = %s
+    GROUP BY hd.MaHD, hd.NgayLap
+    ORDER BY hd.MaHD DESC  -- newest invoice (highest MaHD) first
 
--- Get product colors
-SELECT MauSac FROM mausac_sp WHERE MaSP = %s
+2) Load invoice detail for a selected MaHD
 
--- Load all brands for dropdown
-SELECT MaTH, TenTH FROM thuonghieu ORDER BY TenTH
+    SELECT MaSP, TenSP, MauSac, Size, SoLuongMua, DonGia, ThanhTien
+    FROM cthoadon
+    WHERE MaHD = %s
+    ORDER BY TenSP
 
--- Update product information
-UPDATE sanpham 
-SET TenSP = %s, Gia = %s, MoTa = %s, MaTH = %s, SoLuong = %s, NgayNhapHang = %s
-WHERE MaSP = %s
-
--- Delete old colors
-DELETE FROM mausac_sp WHERE MaSP = %s
-
--- Insert new colors
-INSERT INTO mausac_sp (MaSP, MauSac) VALUES (%s, %s)
-
--- Delete old images
-DELETE FROM url_sp WHERE MaSP = %s
-
--- Insert new images
-INSERT INTO url_sp (MaSP, URLAnh) VALUES (%s, %s)
-```
-
-**Purpose**: Update product information, colors, and images
-
-**Note**: Uses delete-then-insert pattern for colors and images
+Notes:
+- The UI shows only DATE in history list (NgayLap). Detailed view can show all stored detail fields.
+- Sorting: newest invoice first by MaHD (as requested).
 
 ---
 
-### 11. Brand Management
-**Module**: `views/product_view.py`  
-**Function**: `show_brand_management()`
+## Sales / Statistics queries
+Module: views/sales_view.py
 
-```sql
--- Load all brands
-SELECT MaTH, TenTH FROM thuonghieu ORDER BY TenTH
+1) Monthly sales summary (grouped by product)
 
--- Delete brand (with cascade delete of related data)
-DELETE FROM url_sp WHERE MaSP IN (SELECT MaSP FROM sanpham WHERE MaTH = %s)
-DELETE FROM sanpham WHERE MaTH = %s
-DELETE FROM thuonghieu WHERE MaTH = %s
+    SELECT ct.MaSP, ct.TenSP,
+           SUM(ct.SoLuongMua) AS total_quantity,
+           SUM(ct.ThanhTien) AS total_sales
+    FROM cthoadon ct
+    INNER JOIN hoadon hd ON ct.MaHD = hd.MaHD
+    WHERE MONTH(hd.NgayLap) = %s AND YEAR(hd.NgayLap) = %s
+    GROUP BY ct.MaSP, ct.TenSP
+    ORDER BY {order_by}
 
--- Check if brand exists
-SELECT MaTH FROM thuonghieu WHERE TenTH = %s
+- `{order_by}` is replaced by one of:
+  - `total_sales DESC` (default)
+  - `total_quantity DESC`
+  - `ct.MaSP ASC`
+  - `ct.TenSP ASC`
 
--- Generate new brand ID
-SELECT MAX(CAST(SUBSTRING(MaTH, 3) AS UNSIGNED)) FROM thuonghieu WHERE MaTH LIKE 'TH%'
-
--- Insert new brand
-INSERT INTO thuonghieu (MaTH, TenTH) VALUES (%s, %s)
-```
-
-**Purpose**: Manage brands (view, add, delete)
-
-**ID Generation Pattern**: TH001, TH002, TH003, etc.
-
-**Warning**: Deleting a brand also deletes all associated products
+Notes:
+- We use the actual sold amount in `ThanhTien` to compute revenue (historical price stored in `cthoadon`).
+- The unit price column is not shown in seller's sales report because price history is already recorded in `cthoadon`.
 
 ---
 
-## CART VIEW
+## Login / Registration queries
+Module: views/login_view.py
 
-### 12. Load Cart Details
-**Module**: `views/cart_view.py`  
-**Function**: `show_cart()`
+1) Buyer (khachhang) login
 
-```sql
--- Get customer ID from username
-SELECT MaKH FROM khachhang WHERE TenDN = %s
+    SELECT MaKH, TenKH FROM khachhang WHERE TenDN = %s AND MatKhau = %s
 
--- Get cart ID from customer ID
-SELECT MaGH FROM giohang WHERE MaKH = %s
+2) Seller (nhanvien) login
 
--- Get cart items with product details and calculated totals
-SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.MauSac, ghsp.Size, ghsp.SoLuong,
-       (sp.Gia * ghsp.SoLuong) as ThanhTien
-FROM giohangchuasanpham ghsp
-JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
-WHERE ghsp.MaGH = %s
-ORDER BY sp.TenSP
-```
+    SELECT MaNV, TenNV FROM nhanvien WHERE TenDN = %s AND MatKhau = %s
 
-**Purpose**: Display all items in user's cart with calculated totals
+3) Buyer registration (create khachhang + cart)
 
-**Returns**: Complete cart with product details, prices, and subtotals
+    -- check username and phone
+    SELECT MaKH FROM khachhang WHERE TenDN = %s
+    SELECT MaKH FROM khachhang WHERE SDT = %s
 
----
+    -- generate new MaKH
+    SELECT MAX(CAST(SUBSTRING(MaKH, 3) AS UNSIGNED)) FROM khachhang WHERE MaKH LIKE 'KH%'
 
-### 13. Remove Item from Cart
-**Module**: `views/cart_view.py`  
-**Function**: `remove_from_cart_db()`
+    INSERT INTO khachhang (MaKH, TenKH, SDT, DiaChi, TenDN, MatKhau)
+    VALUES (%s, %s, %s, %s, %s, %s)
 
-```sql
--- Get customer and cart IDs
-SELECT MaKH FROM khachhang WHERE TenDN = %s
-SELECT MaGH FROM giohang WHERE MaKH = %s
+    -- create cart row for this new customer (one-to-one)
+    SELECT MAX(CAST(SUBSTRING(MaGH, 3) AS UNSIGNED)) FROM giohang WHERE MaGH LIKE 'GH%'
+    INSERT INTO giohang (MaGH, MaKH) VALUES (%s, %s)
 
--- Delete specific item from cart (by product, color, and size)
-DELETE FROM giohangchuasanpham 
-WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
-```
+4) Seller registration
 
-**Purpose**: Remove single item from cart
+    SELECT MaNV FROM nhanvien WHERE TenDN = %s
+    SELECT MAX(CAST(SUBSTRING(MaNV, 11) AS UNSIGNED)) FROM nhanvien WHERE MaNV LIKE 'B23DCCN%'
+    INSERT INTO nhanvien (MaNV, TenNV, TenDN, MatKhau) VALUES (%s, %s, %s, %s)
 
-**Note**: Requires exact match on product code, color, and size
+Notes:
+- The app enforces unique TenDN and SDT for customers. Sellers (nhanvien) also have unique TenDN.
+- The UI and registration flow generate and insert ID strings (KH001, GH001, etc.).
 
 ---
 
-### 14. Clear Entire Cart
-**Module**: `views/cart_view.py`  
-**Function**: `clear_cart_db()`
+## Model / utility queries
+- Generate next product ID (SP)
 
-```sql
--- Get customer and cart IDs
-SELECT MaKH FROM khachhang WHERE TenDN = %s
-SELECT MaGH FROM giohang WHERE MaKH = %s
+    SELECT MAX(CAST(SUBSTRING(MaSP, 3) AS UNSIGNED)) FROM sanpham WHERE MaSP LIKE 'SP%'
 
--- Delete all items from cart
-DELETE FROM giohangchuasanpham WHERE MaGH = %s
-```
+- Insert new product (including images & colors)
 
-**Purpose**: Remove all items from cart
+    INSERT INTO sanpham (MaSP, TenSP, Gia, MoTa, MaTH, SoLuong, NgayNhapHang)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
 
-**Important Note**: Does NOT return quantities to inventory (items were never deducted)
+    -- then insert associated records
+    INSERT INTO url_sp (MaSP, URLAnh) VALUES (%s, %s)
+    INSERT INTO mausac_sp (MaSP, MauSac) VALUES (%s, %s)
 
----
+- Update product
 
-## INVOICE VIEW
+    UPDATE sanpham
+    SET TenSP = %s, Gia = %s, MoTa = %s, MaTH = %s, SoLuong = %s, NgayNhapHang = %s
+    WHERE MaSP = %s
 
-### 15. Generate Invoice Preview
-**Module**: `views/invoice_view.py`  
-**Function**: `show_invoice_page()`
+    -- replace colors and images using delete-then-insert pattern
+    DELETE FROM mausac_sp WHERE MaSP = %s
+    INSERT INTO mausac_sp (MaSP, MauSac) VALUES (%s, %s)
+    DELETE FROM url_sp WHERE MaSP = %s
+    INSERT INTO url_sp (MaSP, URLAnh) VALUES (%s, %s)
 
-```sql
--- Get customer info (address and phone)
-SELECT DiaChi, SDT, MaKH FROM khachhang WHERE TenDN = %s
+-- Brand management
 
--- Generate next invoice ID (for preview only)
-SELECT MAX(CAST(SUBSTRING(MaHD, 3) AS UNSIGNED)) FROM hoadon WHERE MaHD LIKE 'HD%'
-
--- Get customer's cart
-SELECT MaKH FROM khachhang WHERE TenDN = %s
-SELECT MaGH FROM giohang WHERE MaKH = %s
-
--- Get cart items with details for invoice preview
-SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.SoLuong, ghsp.MauSac, ghsp.Size
-FROM giohangchuasanpham ghsp
-JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
-WHERE ghsp.MaGH = %s
-```
-
-**Purpose**: Display invoice preview before payment
-
-**ID Pattern**: HD001, HD002, HD003, etc.
-
-**Note**: Invoice ID is generated but not saved until payment
+    SELECT MaTH, TenTH FROM thuonghieu ORDER BY TenTH
+    SELECT MaTH FROM thuonghieu WHERE TenTH = %s
+    DELETE FROM url_sp WHERE MaSP IN (SELECT MaSP FROM sanpham WHERE MaTH = %s)
+    DELETE FROM sanpham WHERE MaTH = %s
+    DELETE FROM thuonghieu WHERE MaTH = %s
 
 ---
 
-### 16. Process Payment (CRITICAL TRANSACTION)
-**Module**: `views/invoice_view.py`  
-**Function**: `process_payment_main()`
+## Appendix: Running queries in MySQL Workbench
+- Replace `%s` placeholders with literal values (quoted strings when necessary).
+- Use correct column names from this doc (e.g. `SoLuongMua` in `cthoadon`).
+- If you get errors like "unknown column ct.SoLuong", check that the code expects `SoLuongMua` (invoice detail) vs `SoLuong` (product inventory) and that table aliases match in your query.
 
-```sql
--- Get customer ID
-SELECT MaKH FROM khachhang WHERE TenDN = %s
+Example fix for the reported error:
 
--- Generate actual invoice ID
-SELECT MAX(CAST(SUBSTRING(MaHD, 3) AS UNSIGNED)) FROM hoadon WHERE MaHD LIKE 'HD%'
+    -- Wrong
+    SELECT ct.SoLuong FROM cthoadon ct
 
--- Create invoice header record
-INSERT INTO hoadon (MaHD, MaKH, NgayLap)
-VALUES (%s, %s, %s)
-
--- Get customer's cart
-SELECT MaGH FROM giohang WHERE MaKH = %s
-
--- Get all cart items with full details
-SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.SoLuong, ghsp.MauSac, ghsp.Size
-FROM giohangchuasanpham ghsp
-JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
-WHERE ghsp.MaGH = %s
-
--- For each grouped item:
-
--- Check current stock availability
-SELECT SoLuong FROM sanpham WHERE MaSP = %s
-
--- Insert invoice line item
-INSERT INTO cthoadon (MaHD, MaSP, TenSP, MauSac, Size, SoLuongMua, DonGia, ThanhTien)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-
--- Decrease product quantity with safety check
-UPDATE sanpham 
-SET SoLuong = GREATEST(0, SoLuong - %s)
-WHERE MaSP = %s
-
--- Verify quantity is not negative (safety check)
-SELECT SoLuong FROM sanpham WHERE MaSP = %s
-
--- Clear cart after successful payment
-DELETE FROM giohangchuasanpham WHERE MaGH = %s
-```
-
-**Purpose**: Complete payment transaction - creates invoice, updates inventory, clears cart
-
-**Transaction Flow**:
-1. Validate stock for each item
-2. Create invoice header
-3. Insert invoice details (grouped by product/color/size)
-4. Decrease inventory (with GREATEST to prevent negatives)
-5. Verify no negative quantities
-6. Clear customer's cart
-7. Commit all or rollback if any step fails
-
-**Safety Features**:
-- Stock validation before processing
-- GREATEST(0, value) prevents negative inventory
-- Double-check after update
-- Atomic transaction (all or nothing)
+    -- Correct
+    SELECT ct.SoLuongMua FROM cthoadon ct
 
 ---
 
-## INVOICE HISTORY VIEW
-
-### 16A. Get Customer Invoice History
-**Module**: `views/invoice_history_view.py`  
-**Function**: `load_invoice_history()`
-
-```sql
--- Get customer ID from username
-SELECT MaKH FROM khachhang WHERE TenDN = %s
-
--- Get all invoices for this customer with totals
-SELECT 
-    hd.MaHD,
-    hd.NgayLap,
-    SUM(ct.ThanhTien) as TongTien,
-    SUM(ct.SoLuongMua) as TongSL
-FROM hoadon hd
-INNER JOIN cthoadon ct ON hd.MaHD = ct.MaHD
-WHERE hd.MaKH = %s
-GROUP BY hd.MaHD, hd.NgayLap
-ORDER BY hd.NgayLap DESC
-```
-
-**Purpose**: Display customer's purchase history (all orders)
-
-**Returns**:
-- Invoice code (MaHD)
-- Invoice date (NgayLap) - DATE format (dd/mm/yyyy)
-- Total amount (sum of all items)
-- Total quantity (sum of all items)
-
-**Sorting**: Most recent orders first (DESC by date)
+If you'd like, I can also export this documentation to PDF or create a single SQL file with all queries converted to literal form so you can run them directly in MySQL Workbench.
 
 ---
 
-### 16B. Get Invoice Details
-**Module**: `views/invoice_history_view.py`  
-**Function**: `view_invoice_details()`
-
-```sql
--- Get invoice header with customer info
-SELECT hd.NgayLap, kh.TenKH, kh.SDT, kh.DiaChi
-FROM hoadon hd
-INNER JOIN khachhang kh ON hd.MaKH = kh.MaKH
-WHERE hd.MaHD = %s
-
--- Get all items in the invoice
-SELECT MaSP, TenSP, MauSac, Size, SoLuongMua, DonGia, ThanhTien
-FROM cthoadon
-WHERE MaHD = %s
-ORDER BY TenSP
-```
-
-**Purpose**: Show detailed view of a specific invoice
-
-**Returns**:
-- Customer information (name, phone, address)
-- Invoice date
-- List of all products with:
-  - Product code, name
-  - Color, Size
-  - Quantity purchased
-  - Unit price (at time of purchase)
-  - Line total
-
-**Note**: Shows historical prices (DonGia from cthoadon), not current prices
-
----
-
-## SALES VIEW
-
-### 17. Load Monthly Sales Statistics
-**Module**: `views/sales_view.py`  
-**Function**: `load_sales_data()`
-
-```sql
-SELECT 
-    ct.MaSP,
-    ct.TenSP,
-    SUM(ct.SoLuongMua) as total_quantity,
-    SUM(ct.ThanhTien) as total_sales
-FROM cthoadon ct
-INNER JOIN hoadon hd ON ct.MaHD = hd.MaHD
-WHERE MONTH(hd.NgayLap) = %s AND YEAR(hd.NgayLap) = %s
-GROUP BY ct.MaSP, ct.TenSP
-ORDER BY {order_by}
-```
-
-**Purpose**: Get sales statistics for a specific month/year with dynamic sorting
-
-**Parameters**:
-- Month (1-12)
-- Year (e.g., 2025)
-
-**Sorting Options** (order_by):
-1. `total_sales DESC` - Doanh thu cao → thấp (default)
-2. `total_quantity DESC` - Số lượng bán cao → thấp
-3. `ct.MaSP ASC` - Mã sản phẩm A → Z
-4. `ct.TenSP ASC` - Tên sản phẩm A → Z
-
-**Returns**: 
-- Product code (MaSP)
-- Product name (TenSP)
-- Total quantity sold (sum of all colors/sizes)
-- Total revenue (actual sold price from ThanhTien)
-
-**Key Changes from Previous Version**:
-- ❌ Removed: `sp.Gia as unit_price` (price changes over time)
-- ❌ Removed: JOIN with sanpham table (not needed)
-- ✅ Added: Dynamic sorting options
-- ✅ Added: Uses actual sold price (ThanhTien) instead of current price
-- ✅ Added: Groups all colors/sizes together
-
-**Why These Changes?**:
-- Product prices can change → historical price is in cthoadon
-- No need to show unit price (varies by discount/promotion)
-- Focus on total quantity sold and total revenue
-
----
-
-## PRODUCT MODEL
-
-### 18. Generate Product ID
-**Module**: `models/product.py`  
-**Function**: `generate_product_id()`
-
-```sql
-SELECT MAX(CAST(SUBSTRING(MaSP, 3) AS UNSIGNED)) FROM sanpham WHERE MaSP LIKE 'SP%'
-```
-
-**Purpose**: Auto-generate next product ID
-
-**Pattern**: SP001, SP002, SP003...
-
----
-
-### 19. Generate Brand ID
-**Module**: `models/product.py`  
-**Function**: `generate_brand_id()`
-
-```sql
-SELECT MAX(CAST(SUBSTRING(MaTH, 3) AS UNSIGNED)) FROM thuonghieu WHERE MaTH LIKE 'TH%'
-```
-
-**Purpose**: Auto-generate next brand ID
-
-**Pattern**: TH001, TH002, TH003...
-
----
-
-### 20. Get or Create Brand
-**Module**: `models/product.py`  
-**Function**: `get_or_create_brand()`
-
-```sql
--- Check if brand exists
-SELECT MaTH FROM thuonghieu WHERE TenTH = %s
-
--- If not exists, create new brand
-INSERT INTO thuonghieu (MaTH, TenTH, MoTa) VALUES (%s, %s, %s)
-```
-
-**Purpose**: Ensure brand exists, create if needed
-
-**Returns**: Brand ID (existing or newly created)
-
----
-
-### 21. Get All Products
-**Module**: `models/product.py`  
-**Function**: `get_all_products()`
-
-```sql
-SELECT MaSP, TenSP, Gia, MoTa
-FROM sanpham
-ORDER BY TenSP
-```
-
-**Purpose**: Retrieve all products sorted by name
-
----
-
-### 22. Get Product Images
-**Module**: `models/product.py`  
-**Function**: `get_product_images()`
-
-```sql
-SELECT URLAnh
-FROM url_sp
-WHERE MaSP = %s
-ORDER BY URLAnh
-```
-
-**Purpose**: Get all image URLs for a specific product
-
----
-
-### 23. Get Product by ID
-**Module**: `models/product.py`  
-**Function**: `get_product_by_id()`
-
-```sql
-SELECT MaSP, TenSP, Gia, MoTa
-FROM sanpham
-WHERE MaSP = %s
-```
-
-**Purpose**: Retrieve single product details
-
----
-
-### 24. Add Product (Model Version)
-**Module**: `models/product.py`  
-**Function**: `add_product()`
-
-```sql
--- Get or create brand first
-SELECT MaTH FROM thuonghieu WHERE TenTH = %s
-
--- Generate product ID
-SELECT MAX(CAST(SUBSTRING(MaSP, 3) AS UNSIGNED)) FROM sanpham WHERE MaSP LIKE 'SP%'
-
--- Insert product
-INSERT INTO sanpham (MaSP, TenSP, Gia, MoTa, MaTH, SoLuong)
-VALUES (%s, %s, %s, %s, %s, %s)
-
--- Insert image URLs (loop for each URL)
-INSERT INTO url_sp (MaSP, URLAnh) VALUES (%s, %s)
-```
-
-**Purpose**: Add new product with automatic brand creation
-
-**Note**: Model version with simpler interface
-
----
-
-### 25. Delete Product (Model Version)
-**Module**: `models/product.py`  
-**Function**: `delete_product()`
-
-```sql
--- Delete images first
-DELETE FROM url_sp WHERE MaSP = %s
-
--- Delete product
-DELETE FROM sanpham WHERE MaSP = %s
-```
-
-**Purpose**: Remove product and related images
-
-**Returns**: True if product was deleted, False otherwise
-
----
-
-### 26. Get All Brands
-**Module**: `models/product.py`  
-**Function**: `get_all_brands()`
-
-```sql
-SELECT MaTH, TenTH FROM thuonghieu ORDER BY TenTH
-```
-
-**Purpose**: Retrieve all brands sorted by name
-
----
-
-### 27. Search and Filter Products
-**Module**: `models/product.py`  
-**Function**: `search_products()`
-
-```sql
-SELECT s.MaSP, s.TenSP, s.Gia, s.MoTa, t.TenTH
-FROM sanpham s
-JOIN thuonghieu t ON s.MaTH = t.MaTH
-WHERE 1=1
-  [AND s.TenSP LIKE %s]           -- If search_term provided
-  [AND t.TenTH = %s]               -- If brand_filter provided
-ORDER BY [s.Gia ASC | s.Gia DESC | s.TenSP]  -- Based on price_filter
-```
-
-**Purpose**: Advanced product search with multiple filters
-
-**Filters**:
-- Search term (LIKE match on product name)
-- Brand filter (exact match)
-- Price sorting (low to high, high to low, or by name)
-
----
-
-## LOGIN REGISTRATION
-
-### 28. User Authentication (Buyer)
-**Module**: `views/login_view.py`  
-**Function**: `login()` / `authenticate_user()`
-
-```sql
--- Check buyer credentials
-SELECT MaKH, TenKH FROM khachhang 
-WHERE TenDN = %s AND MatKhau = %s
-```
-
-**Purpose**: Verify buyer login credentials
-
-**Returns**: Customer ID and name if valid
-
----
-
-### 29. User Authentication (Seller)
-**Module**: `views/login_view.py`  
-**Function**: `login()` / `authenticate_user()`
-
-```sql
--- Check seller credentials
-SELECT MaNV, TenNV FROM nhanvien 
-WHERE TenDN = %s AND MatKhau = %s
-```
-
-**Purpose**: Verify seller/employee login credentials
-
-**Returns**: Employee ID and name if valid
-
----
-
-### 30. User Registration (Buyer)
-**Module**: `views/login_view.py`  
-**Function**: `register_buyer()`
-
-```sql
--- Check if username exists
-SELECT MaKH FROM khachhang WHERE TenDN = %s
-
--- Check if phone number exists
-SELECT MaKH FROM khachhang WHERE SDT = %s
-
--- Generate new customer ID
-SELECT MAX(CAST(SUBSTRING(MaKH, 3) AS UNSIGNED)) FROM khachhang WHERE MaKH LIKE 'KH%'
-
--- Register new buyer
-INSERT INTO khachhang (MaKH, TenKH, SDT, DiaChi, TenDN, MatKhau)
-VALUES (%s, %s, %s, %s, %s, %s)
-
--- Create cart for new user
-SELECT MAX(CAST(SUBSTRING(MaGH, 3) AS UNSIGNED)) FROM giohang
-INSERT INTO giohang (MaGH, MaKH) VALUES (%s, %s)
-```
-
-**Purpose**: Register new customer and create their shopping cart
-
-**ID Patterns**:
-- Customer: KH001, KH002, KH003...
-- Cart: GH001, GH002, GH003...
-
-**Validations**:
-- Username must be unique
-- Phone number must be unique
-- Password must be >= 6 characters (constraint in DB)
-- Phone must be 10-11 digits (constraint in DB)
-
----
-
-### 31. User Registration (Seller)
-**Module**: `views/login_view.py`  
-**Function**: `register_seller()`
-
-```sql
--- Check if username exists (in employee table)
-SELECT MaNV FROM nhanvien WHERE TenDN = %s
-
--- Generate new employee ID
-SELECT MAX(CAST(SUBSTRING(MaNV, 11) AS UNSIGNED)) FROM nhanvien WHERE MaNV LIKE 'B23DCCN%'
-
--- Register new seller
-INSERT INTO nhanvien (MaNV, TenNV, TenDN, MatKhau)
-VALUES (%s, %s, %s, %s)
-```
-
-**Purpose**: Register new employee/seller
-
-**ID Pattern**: B23DCCN001, B23DCCN002, etc.
-
-**Note**: Sellers do not have shopping carts
-
----
-
-## DATABASE SCHEMA
-
-### Primary Tables Structure
-
-#### khachhang (Customers)
-```sql
-CREATE TABLE `khachhang` (
-  `MaKH` varchar(30) NOT NULL,
-  `TenKH` varchar(200) NOT NULL,
-  `SDT` varchar(11) NOT NULL,
-  `DiaChi` varchar(300) DEFAULT NULL,
-  `TenDN` varchar(100) NOT NULL,
-  `MatKhau` varchar(255) NOT NULL,
-  PRIMARY KEY (`MaKH`),
-  UNIQUE KEY `SDT` (`SDT`),
-  UNIQUE KEY `TenDN` (`TenDN`),
-  CONSTRAINT `khachhang_chk_1` CHECK (regexp_like(`SDT`,'^[0-9]{10,11}$')),
-  CONSTRAINT `khachhang_chk_2` CHECK ((char_length(`MatKhau`) >= 6))
-)
-```
-
-#### nhanvien (Employees/Sellers)
-```sql
-CREATE TABLE `nhanvien` (
-  `MaNV` varchar(30) NOT NULL,
-  `TenNV` varchar(200) NOT NULL,
-  `TenDN` varchar(100) NOT NULL,
-  `MatKhau` varchar(255) NOT NULL,
-  PRIMARY KEY (`MaNV`),
-  UNIQUE KEY `TenDN` (`TenDN`),
-  CONSTRAINT `nhanvien_chk_1` CHECK ((char_length(`MatKhau`) >= 6))
-)
-```
-
-#### sanpham (Products)
-```sql
-CREATE TABLE `sanpham` (
-  `MaSP` varchar(30) NOT NULL,
-  `TenSP` varchar(300) NOT NULL,
-  `Gia` decimal(14,2) NOT NULL,
-  `MoTa` text,
-  `MaTH` varchar(30) NOT NULL,
-  `SoLuong` int NOT NULL,
-  `NgayNhapHang` date DEFAULT NULL,
-  PRIMARY KEY (`MaSP`),
-  KEY `MaTH` (`MaTH`),
-  CONSTRAINT `sanpham_ibfk_1` FOREIGN KEY (`MaTH`) REFERENCES `thuonghieu` (`MaTH`),
-  CONSTRAINT `sanpham_chk_1` CHECK ((`Gia` > 0)),
-  CONSTRAINT `sanpham_chk_2` CHECK ((`SoLuong` >= 0))
-)
-```
-
-**Discount Feature**:
-- If `NgayNhapHang` > 6 months old: 10% discount
-- If `NgayNhapHang` > 12 months old: 15% discount
-- Discount calculated in Python code, not in database
-
-#### thuonghieu (Brands)
-```sql
-CREATE TABLE `thuonghieu` (
-  `MaTH` varchar(30) NOT NULL,
-  `TenTH` varchar(200) NOT NULL,
-  `MoTa` text,
-  PRIMARY KEY (`MaTH`)
-)
-```
-
-#### giohang (Shopping Carts)
-```sql
-CREATE TABLE `giohang` (
-  `MaGH` varchar(30) NOT NULL,
-  `MaKH` varchar(30) NOT NULL,
-  PRIMARY KEY (`MaGH`),
-  UNIQUE KEY `MaKH` (`MaKH`),
-  CONSTRAINT `giohang_ibfk_1` FOREIGN KEY (`MaKH`) REFERENCES `khachhang` (`MaKH`)
-)
-```
-
-#### giohangchuasanpham (Cart Items)
-```sql
-CREATE TABLE `giohangchuasanpham` (
-  `MaGH` varchar(30) NOT NULL,
-  `MaSP` varchar(30) NOT NULL,
-  `MauSac` varchar(100) NOT NULL,
-  `Size` varchar(20) NOT NULL,
-  `SoLuong` int NOT NULL,
-  PRIMARY KEY (`MaGH`,`MaSP`,`MauSac`,`Size`),
-  KEY `MaSP` (`MaSP`),
-  CONSTRAINT `giohangchuasanpham_ibfk_1` FOREIGN KEY (`MaGH`) REFERENCES `giohang` (`MaGH`),
-  CONSTRAINT `giohangchuasanpham_ibfk_2` FOREIGN KEY (`MaSP`) REFERENCES `sanpham` (`MaSP`),
-  CONSTRAINT `giohangchuasanpham_chk_1` CHECK ((`SoLuong` > 0))
-)
-```
-
-#### hoadon (Invoices/Orders)
-```sql
-CREATE TABLE `hoadon` (
-  `MaHD` varchar(40) NOT NULL,
-  `MaKH` varchar(30) NOT NULL,
-  `MaNV` varchar(30) DEFAULT NULL,
-  `NgayLap` date NOT NULL,
-  PRIMARY KEY (`MaHD`),
-  KEY `MaKH` (`MaKH`),
-  KEY `MaNV` (`MaNV`),
-  CONSTRAINT `hoadon_ibfk_1` FOREIGN KEY (`MaKH`) REFERENCES `khachhang` (`MaKH`),
-  CONSTRAINT `hoadon_ibfk_2` FOREIGN KEY (`MaNV`) REFERENCES `nhanvien` (`MaNV`)
-)
-```
-
-#### cthoadon (Invoice Details)
-```sql
-CREATE TABLE `cthoadon` (
-  `MaHD` varchar(40) NOT NULL,
-  `MaSP` varchar(30) NOT NULL,
-  `TenSP` varchar(300) NOT NULL,
-  `MauSac` varchar(100) NOT NULL,
-  `Size` varchar(50) NOT NULL,
-  `SoLuongMua` int NOT NULL,
-  `DonGia` decimal(14,2) NOT NULL,
-  `ThanhTien` decimal(16,2) NOT NULL,
-  PRIMARY KEY (`MaHD`,`MaSP`,`MauSac`,`Size`),
-  KEY `MaSP` (`MaSP`),
-  CONSTRAINT `cthoadon_ibfk_1` FOREIGN KEY (`MaHD`) REFERENCES `hoadon` (`MaHD`),
-  CONSTRAINT `cthoadon_ibfk_2` FOREIGN KEY (`MaSP`) REFERENCES `sanpham` (`MaSP`),
-  CONSTRAINT `cthoadon_chk_1` CHECK ((`SoLuongMua` >= 0)),
-  CONSTRAINT `cthoadon_chk_2` CHECK ((`DonGia` > 0))
-)
-```
-
-#### url_sp (Product Images)
-```sql
-CREATE TABLE `url_sp` (
-  `MaSP` varchar(30) NOT NULL,
-  `URLAnh` varchar(500) NOT NULL,
-  PRIMARY KEY (`MaSP`,`URLAnh`),
-  CONSTRAINT `url_sp_ibfk_1` FOREIGN KEY (`MaSP`) REFERENCES `sanpham` (`MaSP`)
-)
-```
-
-#### mausac_sp (Product Colors - Dynamic)
-```sql
-CREATE TABLE IF NOT EXISTS `mausac_sp` (
-  `MaSP` VARCHAR(30) NOT NULL,
-  `MauSac` VARCHAR(100) NOT NULL,
-  PRIMARY KEY (MaSP, MauSac),
-  FOREIGN KEY (MaSP) REFERENCES sanpham(MaSP) ON DELETE CASCADE
-)
-```
-
----
-
-## KEY SQL PATTERNS & TECHNIQUES
-
-### 1. Auto-Increment ID Generation
-```sql
-SELECT MAX(CAST(SUBSTRING(MaXX, 3) AS UNSIGNED)) FROM table WHERE MaXX LIKE 'XX%'
-```
-**Used for**: Products (SP), Customers (KH), Employees (B23DCCN), Brands (TH), Carts (GH), Invoices (HD)
-
-### 2. Stock Validation Pattern
-```sql
--- Get total in all carts
-SELECT SUM(SoLuong) FROM giohangchuasanpham WHERE MaSP = %s
-
--- Compare with available stock
-SELECT SoLuong FROM sanpham WHERE MaSP = %s
-
--- Update with safety check
-UPDATE sanpham SET SoLuong = GREATEST(0, SoLuong - %s) WHERE MaSP = %s
-```
-
-### 3. Cascade Delete Pattern
-```sql
--- Delete in order of dependencies
-DELETE FROM url_sp WHERE MaSP = %s
-DELETE FROM sanpham WHERE MaSP = %s
-```
-
-### 4. Join Patterns
-```sql
--- LEFT JOIN (include nulls)
-LEFT JOIN thuonghieu th ON sp.MaTH = th.MaTH
-
--- INNER JOIN (only matching records)
-INNER JOIN hoadon hd ON ct.MaHD = hd.MaHD
-```
-
-### 5. Grouping and Aggregation
-```sql
-SELECT MaSP, SUM(SoLuongMua) as total, SUM(SoLuongMua * Gia) as revenue
-FROM cthoadon
-GROUP BY MaSP
-ORDER BY revenue DESC
-```
-
-### 6. Date Filtering
-```sql
-WHERE MONTH(NgayLap) = %s AND YEAR(NgayLap) = %s
-```
-
----
-
-## IMPORTANT NOTES
-
-### Transaction Management
-- **Payment Processing**: Uses atomic transactions (all or nothing)
-- **Rollback**: Triggered on any error during payment
-- **Commit**: Only after all steps complete successfully
-
-### Stock Management
-- Cart items do NOT reduce inventory
-- Inventory reduced ONLY on payment completion
-- Validation checks total demand across ALL users
-- GREATEST(0, value) prevents negative stock
-
-### Data Integrity
-- Foreign key constraints enforce referential integrity
-- CHECK constraints validate data (price > 0, quantity >= 0, password length, phone format)
-- UNIQUE constraints prevent duplicates (username, phone)
-- Cascade deletes maintain consistency
-
-### Security Considerations
-- All queries use parameterized statements (%s) to prevent SQL injection
-- Passwords stored as plain text (⚠️ **Should be hashed in production**)
-- No input sanitization visible in queries (relies on application layer)
-
-### Performance Optimizations
-- Indexes on foreign keys
-- Indexes on unique columns
-- ORDER BY on indexed columns when possible
-- Joins optimized with proper indexes
-
----
-
-## QUERY STATISTICS
-
-**Total Query Patterns**: 31  
-**Total Tables**: 10  
-**Total Foreign Keys**: 11  
-**Total Unique Constraints**: 5  
-**Total Check Constraints**: 8
-
-### Query Distribution by Module:
-- **Product View**: 11 query groups
-- **Cart View**: 3 query groups
-- **Invoice View**: 2 query groups
-- **Sales View**: 1 query group
-- **Product Model**: 10 query groups
-- **Login/Registration**: 4 query groups
-
----
-
-## DATABASE RELATIONSHIPS
-
-```
-khachhang (1) ----< giohang (1) ----< giohangchuasanpham (M) >---- sanpham
-    |                                                                   |
-    |                                                                   |
-    v                                                                   v
-  hoadon (1) ----< cthoadon (M) >--------------------------------- sanpham
-    |                                                                   |
-    v                                                                   v
-nhanvien                                                          thuonghieu
-                                                                        |
-                                                                        v
-                                                                   url_sp
-                                                                   mausac_sp
-```
-
-**Legend**: (1) = One, (M) = Many, < = One-to-Many relationship
-
----
-
-**End of Documentation**
-
-*Generated on: October 28, 2025*  
-*Database: shopgiaydep09102025*  
-*Project: Shoes Shop Management System*
-
+*End of documentation (updated)*

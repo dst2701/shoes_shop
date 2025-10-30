@@ -263,9 +263,49 @@ class ProductView:
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            # Get product info with brand and import date for discount calculation
+            # Get product info with brand, import date and discount for price calculation
             cursor.execute("""
-                SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, th.TenTH, sp.SoLuong, sp.NgayNhapHang
+                SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, th.TenTH, sp.SoLuong, sp.NgayNhapHang, sp.GiamGia
+                FROM sanpham sp
+                LEFT JOIN thuonghieu th ON sp.MaTH = th.MaTH
+                ORDER BY sp.MaSP
+            """)
+            all_products = cursor.fetchall()
+
+            # AUTO-UPDATE GiamGia based on NgayNhapHang (stock age)
+            from datetime import datetime
+            current_date = datetime.now()
+
+            for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong, ngay_nhap_hang, giam_gia_current in all_products:
+                if ngay_nhap_hang and so_luong > 0:  # Only for products with stock > 0 (IN STOCK)
+                    try:
+                        # Calculate months difference
+                        import_date = ngay_nhap_hang if isinstance(ngay_nhap_hang, datetime) else datetime.strptime(str(ngay_nhap_hang), '%Y-%m-%d')
+                        months_old = (current_date.year - import_date.year) * 12 + (current_date.month - import_date.month)
+
+                        # Determine discount based on age
+                        new_discount = 0
+                        if months_old >= 12:
+                            new_discount = 15  # 15% for 12+ months
+                        elif months_old >= 6:
+                            new_discount = 10  # 10% for 6+ months
+
+                        # Update database if discount changed
+                        if new_discount != giam_gia_current:
+                            cursor.execute("""
+                                UPDATE sanpham SET GiamGia = %s WHERE MaSP = %s
+                            """, (new_discount, ma_sp))
+                            print(f"Auto-updated discount for {ma_sp}: {giam_gia_current}% -> {new_discount}% (age: {months_old} months)")
+                    except Exception as e:
+                        print(f"Error auto-updating discount for {ma_sp}: {e}")
+                        pass
+
+            # Commit discount updates
+            conn.commit()
+
+            # Re-fetch products with updated discounts
+            cursor.execute("""
+                SELECT sp.MaSP, sp.TenSP, sp.Gia, sp.MoTa, th.TenTH, sp.SoLuong, sp.NgayNhapHang, sp.GiamGia
                 FROM sanpham sp
                 LEFT JOIN thuonghieu th ON sp.MaTH = th.MaTH
                 ORDER BY sp.MaSP
@@ -829,7 +869,9 @@ class ProductView:
                 # Delete product images first
                 cursor.execute("DELETE FROM url_sp WHERE MaSP = %s", (ma_sp,))
 
-                # Delete product
+                # Delete product from sanpham table
+                # NOTE: cthoadon (invoice details) will KEEP the product data including TenSP
+                # This ensures sales statistics remain accurate even after product deletion
                 cursor.execute("DELETE FROM sanpham WHERE MaSP = %s", (ma_sp,))
 
                 conn.commit()
@@ -860,7 +902,7 @@ class ProductView:
             out_of_stock_count = 0
             low_stock_count = 0
 
-            for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong, ngay_nhap_hang in all_products:
+            for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong, ngay_nhap_hang, giam_gia in all_products:
                 # Filter by search text - Updated to search both product code and name
                 if search_text and search_text not in ten_sp.lower() and search_text not in ma_sp.lower():
                     continue
@@ -881,7 +923,7 @@ class ProductView:
                     elif selected_price == "Trên 2tr" and price_val < 2000000:
                         continue
 
-                filtered_products.append((ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong, ngay_nhap_hang))
+                filtered_products.append((ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong, ngay_nhap_hang, giam_gia))
 
                 # Count stock warnings for sellers
                 if role == "seller":
@@ -892,36 +934,15 @@ class ProductView:
 
             # Populate treeview with stock warnings for sellers
             product_data.clear()
-            for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong, ngay_nhap_hang in filtered_products:
-                # Calculate discount based on import date (compare with current system date)
-                from datetime import datetime
-                discount_percent = 0
-
-                # Only apply discount if product has stock and import date exists
-                if ngay_nhap_hang and so_luong > 1:
-                    try:
-                        # Convert import date to datetime if needed
-                        import_date = ngay_nhap_hang if isinstance(ngay_nhap_hang, datetime) else datetime.strptime(str(ngay_nhap_hang), '%Y-%m-%d')
-
-                        # Get current system date
-                        current_date = datetime.now()
-
-                        # Calculate months difference
-                        months_old = (current_date.year - import_date.year) * 12 + (current_date.month - import_date.month)
-
-                        # Apply discount based on age
-                        if months_old >= 12:
-                            discount_percent = 15
-                        elif months_old >= 6:
-                            discount_percent = 10
-                    except Exception as e:
-                        print(f"Error calculating discount: {e}")
-                        pass
+            for ma_sp, ten_sp, gia, mo_ta, ten_th, so_luong, ngay_nhap_hang, giam_gia in filtered_products:
+                # Use GiamGia from database (stored as int, e.g., 10 = 10%, 15 = 15%)
+                discount_percent = int(giam_gia) if giam_gia else 0
 
                 # Apply discount to price display with compact messaging
                 if gia is not None:
                     original_price = float(gia)
                     if discount_percent > 0:
+                        # Calculate discounted price: original_price * (1 - discount_percent/100)
                         discounted_price = original_price * (1 - discount_percent / 100)
                         price_display = f"{discounted_price:,.0f} VNĐ (-{discount_percent}%)"
                     else:
@@ -943,6 +964,11 @@ class ProductView:
                         tree.insert("", "end", iid=ma_sp, values=(ma_sp, ten_sp, price_display, so_luong))
                 else:
                     tree.insert("", "end", iid=ma_sp, values=(ma_sp, ten_sp, price_display))
+
+                # Calculate actual discounted price for cart
+                original_price_val = float(gia) if gia else 0
+                actual_price = original_price_val * (1 - discount_percent / 100) if discount_percent > 0 else original_price_val
+
                 product_data[ma_sp] = {
                     "name": ten_sp,
                     "price": price_display,
@@ -950,7 +976,8 @@ class ProductView:
                     "images": product_images.get(ma_sp, []),
                     "quantity": so_luong,
                     "discount": discount_percent,
-                    "original_price": float(gia) if gia else 0
+                    "original_price": original_price_val,
+                    "discounted_price": actual_price  # Giá sau khi giảm để dùng cho cart
                 }
 
             # Update status label with count and stock warnings
@@ -2017,40 +2044,49 @@ class ProductView:
 
         # Add brand function
         def add_brand():
-            # Create add brand dialog
+            # Create add brand dialog - INCREASED HEIGHT for buttons visibility
             add_brand_window = tk.Toplevel(brand_window)
             add_brand_window.title("Thêm thương hiệu mới")
-            add_brand_window.geometry("450x250")  # Increased from 400x200 to 450x250
+            add_brand_window.geometry("520x300")  # Increased to 520x300 - MORE SPACE!
             add_brand_window.resizable(False, False)
 
             # Center the dialog
             add_brand_window.update_idletasks()
-            x = (add_brand_window.winfo_screenwidth() // 2) - (450 // 2)
-            y = (add_brand_window.winfo_screenheight() // 2) - (250 // 2)
+            x = (add_brand_window.winfo_screenwidth() // 2) - (520 // 2)
+            y = (add_brand_window.winfo_screenheight() // 2) - (300 // 2)
             add_brand_window.geometry(f"+{x}+{y}")
 
             # Make sure it's on top
             add_brand_window.transient(brand_window)
             add_brand_window.grab_set()
-            add_brand_window.lift()  # Raise window to top
-            add_brand_window.focus_force()  # Force focus
+            add_brand_window.lift()
+            add_brand_window.focus_force()
 
-            # Form
-            form_frame = tk.Frame(add_brand_window, bg='white')
-            form_frame.pack(fill='both', expand=True, padx=25, pady=25)
+            # MAIN CONTAINER with fixed structure
+            main_container = tk.Frame(add_brand_window, bg='white')
+            main_container.pack(fill='both', expand=True)
 
-            tk.Label(form_frame, text="THÊM THƯƠNG HIỆU MỚI", font=('Arial', 14, 'bold'),
-                     fg='#27ae60', bg='white').pack(pady=(0, 20))
+            # TOP SECTION - Form content (NOT EXPANDABLE)
+            top_section = tk.Frame(main_container, bg='white')
+            top_section.pack(side='top', fill='x', padx=30, pady=(20, 10))
 
-            tk.Label(form_frame, text="Tên thương hiệu:", font=('Arial', 12, 'bold'),
+            tk.Label(top_section, text="THÊM THƯƠNG HIỆU MỚI", font=('Arial', 14, 'bold'),
+                     fg='#27ae60', bg='white').pack(pady=(0, 15))
+
+            tk.Label(top_section, text="Tên thương hiệu:", font=('Arial', 12, 'bold'),
                     bg='white').pack(anchor='w', pady=(0, 5))
-            entry_brand_name = tk.Entry(form_frame, font=('Arial', 12), width=35)
-            entry_brand_name.pack(pady=(0, 25), fill='x')
+            entry_brand_name = tk.Entry(top_section, font=('Arial', 12), width=42)
+            entry_brand_name.pack(pady=(0, 10), fill='x')
             entry_brand_name.focus()
 
-            # Buttons frame - FIXED AT BOTTOM
-            button_frame_add = tk.Frame(form_frame, bg='white')
-            button_frame_add.pack(fill='x', pady=(10, 0))
+            # MIDDLE SPACER - Expandable to push buttons down
+            spacer = tk.Frame(main_container, bg='white')
+            spacer.pack(side='top', fill='both', expand=True)
+
+            # BOTTOM SECTION - Buttons (ALWAYS AT BOTTOM)
+            button_frame_add = tk.Frame(main_container, bg='white', height=60)
+            button_frame_add.pack(side='bottom', fill='x', padx=30, pady=(10, 20))
+            button_frame_add.pack_propagate(False)  # CRITICAL: Prevent shrinking!
 
             def save_brand():
                 brand_name = entry_brand_name.get().strip()

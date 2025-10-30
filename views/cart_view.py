@@ -81,10 +81,10 @@ class CartView:
 
             ma_gh = gh_result[0]
 
-            # Lấy chi tiết giỏ hàng với thông tin sản phẩm từ database
+            # Lấy chi tiết giỏ hàng với thông tin sản phẩm từ database (bao gồm GiamGia)
             cursor.execute("""
                 SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.MauSac, ghsp.Size, ghsp.SoLuong,
-                       (sp.Gia * ghsp.SoLuong) as ThanhTien
+                       sp.GiamGia
                 FROM giohangchuasanpham ghsp
                 JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
                 WHERE ghsp.MaGH = %s
@@ -98,19 +98,25 @@ class CartView:
                         font=('Arial', 18), bg='#f8f9fa', fg='#6c757d').pack(expand=True)
                 return
 
-            # Tổ chức dữ liệu giỏ hàng
-            for ma_sp, ten_sp, gia, mau_sac, size, so_luong, thanh_tien in cart_items:
+            # Tổ chức dữ liệu giỏ hàng - Áp dụng giảm giá
+            for ma_sp, ten_sp, gia, mau_sac, size, so_luong, giam_gia in cart_items:
+                # Tính giá sau giảm (GiamGia là int: 0, 10, 15,...)
+                discount_percent = int(giam_gia) if giam_gia else 0
+                original_price = float(gia)
+                discounted_price = original_price * (1 - discount_percent / 100)
+                thanh_tien = discounted_price * so_luong
+
                 cart_key = f"{ma_sp}_{mau_sac}_{size}"
                 cart_products[cart_key] = {
                     'product_id': ma_sp,
                     'name': ten_sp,
-                    'price': float(gia),
+                    'price': discounted_price,  # Giá đã giảm
                     'color': mau_sac,
                     'size': size,
                     'quantity': so_luong,
-                    'total': float(thanh_tien)
+                    'total': thanh_tien
                 }
-                total_amount += float(thanh_tien)
+                total_amount += thanh_tien
 
         except Exception as e:
             messagebox.showerror("Lỗi", f"Không thể tải dữ liệu giỏ hàng: {str(e)}")
@@ -150,9 +156,43 @@ class CartView:
             header_label.place(relx=sum(col[1] for col in header_cols[:i]), rely=0,
                               relwidth=width_ratio, relheight=1)
 
-        # Items container
-        items_container = tk.Frame(main_frame, bg='#f8f9fa')
-        items_container.pack(fill='both', expand=True, pady=(0, 20))
+        # Create scrollable items container
+        items_scroll_frame = tk.Frame(main_frame, bg='#f8f9fa')
+        items_scroll_frame.pack(fill='both', expand=True, pady=(0, 20))
+
+        # Canvas and scrollbar for scrollable content
+        items_canvas = tk.Canvas(items_scroll_frame, bg='#f8f9fa', highlightthickness=0)
+        items_scrollbar = tk.Scrollbar(items_scroll_frame, orient='vertical', command=items_canvas.yview)
+        items_container = tk.Frame(items_canvas, bg='#f8f9fa')
+
+        # Pack scrollbar and canvas
+        items_scrollbar.pack(side='right', fill='y')
+        items_canvas.pack(side='left', fill='both', expand=True)
+
+        # Create window in canvas with width binding
+        canvas_window = items_canvas.create_window((0, 0), window=items_container, anchor='nw')
+
+        # Update scroll region when content changes
+        def update_scroll_region(event=None):
+            items_canvas.configure(scrollregion=items_canvas.bbox('all'))
+
+        items_container.bind('<Configure>', update_scroll_region)
+
+        # Bind canvas width to container width
+        def configure_canvas_width(event):
+            canvas_width = event.width
+            items_canvas.itemconfig(canvas_window, width=canvas_width)
+
+        items_canvas.bind('<Configure>', configure_canvas_width)
+        items_canvas.configure(yscrollcommand=items_scrollbar.set)
+
+        # Mouse wheel scrolling
+        def on_mousewheel(event):
+            items_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        # Only bind mousewheel when mouse is over the canvas
+        items_canvas.bind("<Enter>", lambda e: items_canvas.bind_all("<MouseWheel>", on_mousewheel))
+        items_canvas.bind("<Leave>", lambda e: items_canvas.unbind_all("<MouseWheel>"))
 
         # Function to remove item from cart - cập nhật để xóa từ database
         def remove_from_cart_db(product_id, color, size):
@@ -217,14 +257,15 @@ class CartView:
                 x_pos = sum(col[1] for col in row_data[:i])
 
                 if content_type == 'button':
-                    # Remove button with hover effect
+                    # Remove button with hover effect - Thu hẹp để align tốt hơn
                     btn_remove = tk.Button(product_frame, text="🗑️",
                                           command=lambda pid=product['product_id'], color=product['color'],
                                           size=product['size']: remove_from_cart_db(pid, color, size),
-                                          bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
-                                          cursor='hand2', relief='raised', width=6, height=1, bd=2)
-                    btn_remove.place(relx=x_pos + (width_ratio - 0.08)/2, rely=0.2,
-                                    relwidth=0.08, relheight=0.6)
+                                          bg='#e74c3c', fg='white', font=('Arial', 11, 'bold'),
+                                          cursor='hand2', relief='raised', width=4, height=1, bd=2)
+                    # Thu hẹp button: 0.08 -> 0.06, center trong column 0.12
+                    btn_remove.place(relx=x_pos + (width_ratio - 0.06)/2, rely=0.25,
+                                    relwidth=0.06, relheight=0.5)
                     # Add hover effect
                     add_button_hover_effect(btn_remove, '#e74c3c', get_hover_color('#e74c3c'))
                 elif content_type == 'price':

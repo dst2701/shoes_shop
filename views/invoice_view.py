@@ -133,25 +133,59 @@ class InvoiceView:
         tk.Label(products_frame, text="Chi tiết sản phẩm:", font=('Arial', 16, 'bold'),
                  bg='white', fg='#2c3e50').pack(anchor='w', pady=(0, 10))
 
-        # Create table for products with better alignment including size and color
-        table_frame = tk.Frame(products_frame, bg='white')
-        table_frame.pack(fill='both', expand=True)
+        # Create scrollable table for products with better alignment including size and color
+        table_scroll_frame = tk.Frame(products_frame, bg='white')
+        table_scroll_frame.pack(fill='both', expand=True)
+
+        # Canvas and scrollbar for scrollable table
+        table_canvas = tk.Canvas(table_scroll_frame, bg='white', highlightthickness=0)
+        table_scrollbar = tk.Scrollbar(table_scroll_frame, orient='vertical', command=table_canvas.yview)
+        table_frame = tk.Frame(table_canvas, bg='white')
+
+        # Pack scrollbar and canvas
+        table_scrollbar.pack(side='right', fill='y')
+        table_canvas.pack(side='left', fill='both', expand=True)
+
+        # Create window in canvas with width binding
+        canvas_window = table_canvas.create_window((0, 0), window=table_frame, anchor='nw')
+
+        # Update scroll region when content changes
+        def update_scroll_region(event=None):
+            table_canvas.configure(scrollregion=table_canvas.bbox('all'))
+
+        table_frame.bind('<Configure>', update_scroll_region)
+
+        # Bind canvas width to container width
+        def configure_canvas_width(event):
+            canvas_width = event.width
+            table_canvas.itemconfig(canvas_window, width=canvas_width)
+
+        table_canvas.bind('<Configure>', configure_canvas_width)
+        table_canvas.configure(yscrollcommand=table_scrollbar.set)
+
+        # Mouse wheel scrolling
+        def on_invoice_mousewheel(event):
+            table_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        # Only bind mousewheel when mouse is over the canvas
+        table_canvas.bind("<Enter>", lambda e: table_canvas.bind_all("<MouseWheel>", on_invoice_mousewheel))
+        table_canvas.bind("<Leave>", lambda e: table_canvas.unbind_all("<MouseWheel>"))
 
         # Table header with size and color columns
         header_table = tk.Frame(table_frame, bg='#34495e', height=45)
         header_table.pack(fill='x', pady=(0, 2))
         header_table.pack_propagate(False)
 
-        # Define header columns with size and color included
+        # Define header columns with size and color included - Thu hẹp để fit content
         header_cols = [
-            ("STT", 0.06, 'center'),
-            ("Mã SP", 0.10, 'center'),
-            ("Tên sản phẩm", 0.28, 'w'),
-            ("Màu sắc", 0.10, 'center'),
-            ("Size", 0.08, 'center'),
-            ("Số lượng", 0.10, 'center'),
-            ("Đơn giá", 0.14, 'e'),
-            ("Thành tiền", 0.14, 'e')
+            ("STT", 0.05, 'center'),
+            ("Mã SP", 0.09, 'center'),
+            ("Tên sản phẩm", 0.27, 'w'),
+            ("Màu sắc", 0.09, 'center'),
+            ("Size", 0.06, 'center'),
+            ("Số lượng", 0.09, 'center'),
+            ("Đơn giá", 0.16, 'e'),
+            ("Thành tiền", 0.16, 'e')
         ]
 
         for i, (text, width_ratio, anchor) in enumerate(header_cols):
@@ -178,9 +212,9 @@ class InvoiceView:
                 if gh_result:
                     ma_gh = gh_result[0]
 
-                    # Get cart items with product details
+                    # Get cart items with product details (bao gồm GiamGia)
                     cursor.execute("""
-                        SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.SoLuong, ghsp.MauSac, ghsp.Size
+                        SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.SoLuong, ghsp.MauSac, ghsp.Size, sp.GiamGia
                         FROM giohangchuasanpham ghsp
                         JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
                         WHERE ghsp.MaGH = %s
@@ -188,21 +222,26 @@ class InvoiceView:
 
                     cart_items = cursor.fetchall()
 
-                    # Group items by product code, name, size, and color
-                    for ma_sp, ten_sp, gia, so_luong, mau_sac, size in cart_items:
+                    # Group items by product code, name, size, and color - Áp dụng giảm giá
+                    for ma_sp, ten_sp, gia, so_luong, mau_sac, size, giam_gia in cart_items:
+                        # Tính giá sau giảm (GiamGia là int: 0, 10, 15,...)
+                        discount_percent = int(giam_gia) if giam_gia else 0
+                        original_price = float(gia)
+                        discounted_price = original_price * (1 - discount_percent / 100)
+
                         key = f"{ma_sp}_{ten_sp}_{mau_sac}_{size}"
                         if key in grouped_products:
                             grouped_products[key]['quantity'] += so_luong
-                            grouped_products[key]['total'] = grouped_products[key]['quantity'] * gia
+                            grouped_products[key]['total'] = grouped_products[key]['quantity'] * discounted_price
                         else:
                             grouped_products[key] = {
                                 'ma_sp': ma_sp,
                                 'name': ten_sp,
-                                'price': gia,
+                                'price': discounted_price,  # Giá đã giảm
                                 'quantity': so_luong,
                                 'color': mau_sac,
                                 'size': size,
-                                'total': gia * so_luong
+                                'total': discounted_price * so_luong
                             }
 
         except Exception as e:
@@ -221,16 +260,16 @@ class InvoiceView:
             row_frame.pack(fill='x', pady=1)
             row_frame.pack_propagate(False)
 
-            # Create row data with same width ratios as headers including size and color
+            # Create row data with EXACT SAME width ratios as headers - CRITICAL FOR ALIGNMENT!
             row_data = [
-                (str(stt), 0.06, 'center', 'text'),
-                (product['ma_sp'], 0.10, 'center', 'text'),
-                (product['name'], 0.28, 'w', 'name'),
-                (product['color'], 0.10, 'center', 'text'),
-                (str(product['size']), 0.08, 'center', 'text'),
-                (str(product['quantity']), 0.10, 'center', 'text'),
-                (f"{product['price']:,.0f}", 0.14, 'e', 'text'),
-                (f"{product['total']:,.0f}", 0.14, 'e', 'price')
+                (str(stt), 0.05, 'center', 'text'),           # Match header: 0.05
+                (product['ma_sp'], 0.09, 'center', 'text'),   # Match header: 0.09
+                (product['name'], 0.27, 'w', 'name'),         # Match header: 0.27
+                (product['color'], 0.09, 'center', 'text'),   # Match header: 0.09
+                (str(product['size']), 0.06, 'center', 'text'), # Match header: 0.06
+                (str(product['quantity']), 0.09, 'center', 'text'), # Match header: 0.09
+                (f"{product['price']:,.0f}", 0.16, 'e', 'text'),    # Match header: 0.16
+                (f"{product['total']:,.0f}", 0.16, 'e', 'price')    # Match header: 0.16
             ]
 
             for i, (content, width_ratio, anchor, content_type) in enumerate(row_data):
@@ -338,9 +377,9 @@ class InvoiceView:
             if gh_result:
                 ma_gh = gh_result[0]
 
-                # Get detailed cart items
+                # Get detailed cart items (bao gồm GiamGia)
                 cursor.execute("""
-                    SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.SoLuong, ghsp.MauSac, ghsp.Size
+                    SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.SoLuong, ghsp.MauSac, ghsp.Size, sp.GiamGia
                     FROM giohangchuasanpham ghsp
                     JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
                     WHERE ghsp.MaGH = %s
@@ -348,22 +387,27 @@ class InvoiceView:
 
                 cart_items = cursor.fetchall()
 
-                # Group items and insert into cthoadon
+                # Group items and insert into cthoadon - Áp dụng giảm giá
                 grouped_items = {}
-                for ma_sp, ten_sp, gia, so_luong, mau_sac, size in cart_items:
+                for ma_sp, ten_sp, gia, so_luong, mau_sac, size, giam_gia in cart_items:
+                    # Tính giá sau giảm (GiamGia là int: 0, 10, 15,...)
+                    discount_percent = int(giam_gia) if giam_gia else 0
+                    original_price = float(gia)
+                    discounted_price = original_price * (1 - discount_percent / 100)
+
                     key = f"{ma_sp}_{mau_sac}_{size}"
                     if key in grouped_items:
                         grouped_items[key]['quantity'] += so_luong
-                        grouped_items[key]['total'] = grouped_items[key]['quantity'] * gia
+                        grouped_items[key]['total'] = grouped_items[key]['quantity'] * discounted_price
                     else:
                         grouped_items[key] = {
                             'ma_sp': ma_sp,
                             'ten_sp': ten_sp,
-                            'price': gia,
+                            'price': discounted_price,  # Giá đã giảm để lưu vào hóa đơn
                             'quantity': so_luong,
                             'color': mau_sac,
                             'size': size,
-                            'total': gia * so_luong
+                            'total': discounted_price * so_luong
                         }
 
                 # Insert grouped items into cthoadon and decrease product quantities
