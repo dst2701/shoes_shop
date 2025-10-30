@@ -2084,9 +2084,14 @@ class ProductView:
             spacer.pack(side='top', fill='both', expand=True)
 
             # BOTTOM SECTION - Buttons (ALWAYS AT BOTTOM)
-            button_frame_add = tk.Frame(main_container, bg='white', height=60)
+            # Use fixed height and pack_propagate(False) to ensure buttons always visible
+            button_frame_add = tk.Frame(main_container, bg='white', height=70)
             button_frame_add.pack(side='bottom', fill='x', padx=30, pady=(10, 20))
             button_frame_add.pack_propagate(False)  # CRITICAL: Prevent shrinking!
+
+            # Create inner container for buttons with padding
+            buttons_container = tk.Frame(button_frame_add, bg='white')
+            buttons_container.pack(fill='both', expand=True, pady=10)
 
             def save_brand():
                 brand_name = entry_brand_name.get().strip()
@@ -2132,17 +2137,18 @@ class ProductView:
                         conn.close()
 
             # Save and Cancel buttons with hover effects
-            btn_save_brand = tk.Button(button_frame_add, text="💾 Lưu", command=save_brand,
+            # Pack into buttons_container (not button_frame_add directly)
+            btn_save_brand = tk.Button(buttons_container, text="💾 Lưu", command=save_brand,
                                       bg='#27ae60', fg='white', font=('Arial', 12, 'bold'),
-                                      padx=25, pady=10, cursor='hand2', relief='raised', bd=2)
-            btn_save_brand.pack(side='left', padx=(0, 10))
+                                      padx=25, pady=8, cursor='hand2', relief='raised', bd=2)
+            btn_save_brand.pack(side='left', padx=5)
             add_button_hover_effect(btn_save_brand, '#27ae60', get_hover_color('#27ae60'))
 
-            btn_cancel_brand = tk.Button(button_frame_add, text="❌ Hủy", command=add_brand_window.destroy,
-                                        bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'),
-                                        padx=25, pady=10, cursor='hand2', relief='raised', bd=2)
-            btn_cancel_brand.pack(side='right')
-            add_button_hover_effect(btn_cancel_brand, '#95a5a6', get_hover_color('#95a5a6'))
+            btn_cancel_brand = tk.Button(buttons_container, text="❌ Hủy", command=add_brand_window.destroy,
+                                        bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
+                                        padx=25, pady=8, cursor='hand2', relief='raised', bd=2)
+            btn_cancel_brand.pack(side='left', padx=5)
+            add_button_hover_effect(btn_cancel_brand, '#e74c3c', get_hover_color('#e74c3c'))
 
             # Enter key to save
             entry_brand_name.bind('<Return>', lambda e: save_brand())
