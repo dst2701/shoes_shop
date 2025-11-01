@@ -133,18 +133,19 @@ class CartView:
         tk.Label(main_frame, text="Chi tiết giỏ hàng:", font=('Arial', 16, 'bold'),
                  bg='#f8f9fa').pack(anchor='w', pady=(0, 10))
 
-        # Table header with better alignment
+        # Table header with better alignment - Added checkbox column
         header_frame_table = tk.Frame(main_frame, bg='#34495e', height=45)
         header_frame_table.pack(fill='x', pady=(0, 2))
         header_frame_table.pack_propagate(False)
 
-        # Create header columns with consistent widths - Updated to include MaSP
+        # Create header columns with consistent widths - Updated to include Checkbox and MaSP
         header_cols = [
-            ("Mã SP", 0.1, 'center'),
-            ("Tên sản phẩm", 0.22, 'w'),
-            ("Màu sắc", 0.11, 'center'),
+            ("☑", 0.05, 'center'),  # Checkbox column
+            ("Mã SP", 0.09, 'center'),
+            ("Tên sản phẩm", 0.20, 'w'),
+            ("Màu sắc", 0.10, 'center'),
             ("Size", 0.08, 'center'),
-            ("Số lượng", 0.11, 'center'),
+            ("Số lượng", 0.10, 'center'),
             ("Đơn giá", 0.13, 'e'),
             ("Thành tiền", 0.13, 'e'),
             ("Hành động", 0.12, 'center')
@@ -194,6 +195,35 @@ class CartView:
         items_canvas.bind("<Enter>", lambda e: items_canvas.bind_all("<MouseWheel>", on_mousewheel))
         items_canvas.bind("<Leave>", lambda e: items_canvas.unbind_all("<MouseWheel>"))
 
+        # Dictionary to store checkbox variables and selected items
+        checkbox_vars = {}
+        selected_total = tk.DoubleVar(value=0.0)
+
+        # Function to update total based on selected items
+        def update_selected_total():
+            total = 0
+            for cart_key, var in checkbox_vars.items():
+                if var.get():
+                    total += cart_products[cart_key]['total']
+            selected_total.set(total)
+            total_label.config(text=f"{total:,.0f} VNĐ")
+
+        # Function to toggle row highlight
+        def toggle_row_highlight(frame, var, cart_key):
+            if var.get():
+                frame.config(bg='#d4edda')  # Light green highlight
+                # Update all child widgets background
+                for child in frame.winfo_children():
+                    if isinstance(child, tk.Label):
+                        child.config(bg='#d4edda')
+            else:
+                frame.config(bg='white')
+                # Update all child widgets background
+                for child in frame.winfo_children():
+                    if isinstance(child, tk.Label):
+                        child.config(bg='white')
+            update_selected_total()
+
         # Function to remove item from cart - cập nhật để xóa từ database
         def remove_from_cart_db(product_id, color, size):
             result = messagebox.askyesno("Xác nhận xóa",
@@ -241,13 +271,18 @@ class CartView:
             product_frame.pack(fill='x', pady=1)
             product_frame.pack_propagate(False)
 
-            # Create row data with same width ratios as headers
+            # Create checkbox variable for this row
+            checkbox_var = tk.BooleanVar(value=False)
+            checkbox_vars[cart_key] = checkbox_var
+
+            # Create row data with same width ratios as headers (including checkbox)
             row_data = [
-                (product['product_id'], 0.1, 'center', 'text'),
-                (product['name'], 0.22, 'w', 'text'),
-                (product['color'], 0.11, 'center', 'text'),
+                ("", 0.05, 'center', 'checkbox'),  # Checkbox
+                (product['product_id'], 0.09, 'center', 'text'),
+                (product['name'], 0.20, 'w', 'text'),
+                (product['color'], 0.10, 'center', 'text'),
                 (product['size'], 0.08, 'center', 'text'),
-                (str(product['quantity']), 0.11, 'center', 'text'),
+                (str(product['quantity']), 0.10, 'center', 'text'),
                 (f"{product['price']:,.0f} VNĐ", 0.13, 'e', 'text'),
                 (f"{product['total']:,.0f} VNĐ", 0.13, 'e', 'price'),
                 ("", 0.12, 'center', 'button')
@@ -256,7 +291,13 @@ class CartView:
             for i, (content, width_ratio, anchor, content_type) in enumerate(row_data):
                 x_pos = sum(col[1] for col in row_data[:i])
 
-                if content_type == 'button':
+                if content_type == 'checkbox':
+                    # Checkbox
+                    chk = tk.Checkbutton(product_frame, variable=checkbox_var, bg='white',
+                                        command=lambda f=product_frame, v=checkbox_var, k=cart_key:
+                                        toggle_row_highlight(f, v, k))
+                    chk.place(relx=x_pos, rely=0, relwidth=width_ratio, relheight=1)
+                elif content_type == 'button':
                     # Remove button with hover effect - Thu hẹp để align tốt hơn
                     btn_remove = tk.Button(product_frame, text="🗑️",
                                           command=lambda pid=product['product_id'], color=product['color'],
@@ -277,22 +318,23 @@ class CartView:
                     # Regular text labels
                     label = tk.Label(product_frame, text=content, font=('Arial', 11),
                                     bg='white', anchor=anchor)
-                    if content_type == 'text' and i == 1:  # Product name - add wrapping
+                    if content_type == 'text' and i == 2:  # Product name - add wrapping (index changed due to checkbox)
                         label.config(wraplength=int(width_ratio * 800))  # Approximate wrapping width
                     label.place(relx=x_pos, rely=0, relwidth=width_ratio, relheight=1)
 
-        # Total section
+        # Total section - Now shows selected items total
         total_frame = tk.Frame(main_frame, bg='#ecf0f1', relief='ridge', bd=2)
         total_frame.pack(fill='x', pady=(20, 0))
 
         total_container = tk.Frame(total_frame, bg='#ecf0f1')
         total_container.pack(fill='x', padx=20, pady=15)
 
-        tk.Label(total_container, text="TỔNG TIỀN:", font=('Arial', 16, 'bold'),
+        tk.Label(total_container, text="TỔNG TIỀN (Đã chọn):", font=('Arial', 16, 'bold'),
                  bg='#ecf0f1', fg='#2c3e50').pack(side='left')
 
-        tk.Label(total_container, text=f"{total_amount:,.0f} VNĐ", font=('Arial', 20, 'bold'),
-                 bg='#ecf0f1', fg='#e74c3c').pack(side='right')
+        total_label = tk.Label(total_container, text="0 VNĐ", font=('Arial', 20, 'bold'),
+                               bg='#ecf0f1', fg='#e74c3c')
+        total_label.pack(side='right')
 
         # Action buttons frame
         button_frame = tk.Frame(main_frame, bg='#f8f9fa')
@@ -307,7 +349,8 @@ class CartView:
         add_button_hover_effect(btn_clear, '#e74c3c', get_hover_color('#e74c3c'))
 
         btn_view_invoice = tk.Button(button_frame, text="📄 Xem hóa đơn",
-                               command=lambda: self.view_invoice_from_cart_db(username, role, cart_products, total_amount, on_back_callback),
+                               command=lambda: self.view_invoice_from_cart_db_selected(username, role, cart_products,
+                                                                                       checkbox_vars, on_back_callback),
                                bg='#f39c12', fg='white', font=('Arial', 12, 'bold'),
                                padx=20, pady=10, relief='raised', cursor='hand2', bd=2)
         btn_view_invoice.pack(side='right')
@@ -356,26 +399,36 @@ class CartView:
             if conn:
                 conn.close()
 
-    def view_invoice_from_cart_db(self, username, role, cart_products, total_amount, on_back_callback):
-        """Xem hóa đơn từ giỏ hàng - sử dụng dữ liệu từ database"""
-        if not cart_products:
-            messagebox.showwarning("Cảnh báo", "Giỏ hàng trống!")
+    def view_invoice_from_cart_db_selected(self, username, role, cart_products, checkbox_vars, on_back_callback):
+        """Xem hóa đơn từ giỏ hàng - CHỈ các sản phẩm được chọn"""
+        # Filter only selected products
+        selected_products = {}
+        selected_total = 0
+
+        for cart_key, var in checkbox_vars.items():
+            if var.get():  # Only include checked items
+                product = cart_products[cart_key]
+                # Use cart_key as unique identifier (includes color and size)
+                selected_products[cart_key] = {
+                    'product_id': product['product_id'],
+                    'name': product['name'],
+                    'price': product['price'],
+                    'color': product['color'],
+                    'size': product['size'],
+                    'quantity': product['quantity'],
+                    'total': product['total']
+                }
+                selected_total += product['total']
+
+        if not selected_products:
+            messagebox.showwarning("Cảnh báo", "Vui lòng chọn ít nhất một sản phẩm để xem hóa đơn!")
             return
 
-        # Convert cart_products format để tương thích với show_invoice_page
-        converted_products = {}
-        for cart_key, product in cart_products.items():
-            converted_products[product['product_id']] = {
-                'name': product['name'],
-                'price': product['price'],
-                'quantity': product['quantity'],
-                'total': product['total']
-            }
-
-        # Import và sử dụng InvoiceView
+        # Import và sử dụng InvoiceView với selected products
         from views.invoice_view import InvoiceView
         invoice_view = InvoiceView(self.root)
-        invoice_view.show_invoice_page(username, role, converted_products, total_amount, lambda: self.show_cart(username, role, on_back_callback))
+        invoice_view.show_invoice_page(username, role, selected_products, selected_total,
+                                      lambda: self.show_cart(username, role, on_back_callback))
 
     def set_logout_callback(self, callback):
         """Set logout callback"""

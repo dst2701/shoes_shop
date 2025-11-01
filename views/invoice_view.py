@@ -194,63 +194,25 @@ class InvoiceView:
             header_label.place(relx=sum(col[1] for col in header_cols[:i]), rely=0,
                               relwidth=width_ratio, relheight=1)
 
-        # Group cart products by name, size, and color
+        # Use cart_products directly - cart_products now contains selected items only
+        # cart_products format from cart_view:
+        # {cart_key: {'product_id': ..., 'name': ..., 'price': ..., 'color': ..., 'size': ..., 'quantity': ..., 'total': ...}}
+
+        # Group products by product_id, name, size, and color (should already be unique by cart_key)
         grouped_products = {}
 
-        # Get detailed cart data from database including size and color
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-
-            # Get customer's cart
-            cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
-            kh_result = cursor.fetchone()
-            if kh_result:
-                ma_kh = kh_result[0]
-                cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
-                gh_result = cursor.fetchone()
-                if gh_result:
-                    ma_gh = gh_result[0]
-
-                    # Get cart items with product details (bao gồm GiamGia)
-                    cursor.execute("""
-                        SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.SoLuong, ghsp.MauSac, ghsp.Size, sp.GiamGia
-                        FROM giohangchuasanpham ghsp
-                        JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
-                        WHERE ghsp.MaGH = %s
-                    """, (ma_gh,))
-
-                    cart_items = cursor.fetchall()
-
-                    # Group items by product code, name, size, and color - Áp dụng giảm giá
-                    for ma_sp, ten_sp, gia, so_luong, mau_sac, size, giam_gia in cart_items:
-                        # Tính giá sau giảm (GiamGia là int: 0, 10, 15,...)
-                        discount_percent = int(giam_gia) if giam_gia else 0
-                        original_price = float(gia)
-                        discounted_price = original_price * (1 - discount_percent / 100)
-
-                        key = f"{ma_sp}_{ten_sp}_{mau_sac}_{size}"
-                        if key in grouped_products:
-                            grouped_products[key]['quantity'] += so_luong
-                            grouped_products[key]['total'] = grouped_products[key]['quantity'] * discounted_price
-                        else:
-                            grouped_products[key] = {
-                                'ma_sp': ma_sp,
-                                'name': ten_sp,
-                                'price': discounted_price,  # Giá đã giảm
-                                'quantity': so_luong,
-                                'color': mau_sac,
-                                'size': size,
-                                'total': discounted_price * so_luong
-                            }
-
-        except Exception as e:
-            print(f"Error grouping products: {e}")
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
+        for cart_key, product in cart_products.items():
+            # cart_key is already unique (MaSP_color_size), so we can use it directly
+            # But we need to structure it for display
+            grouped_products[cart_key] = {
+                'ma_sp': product.get('product_id', ''),
+                'name': product.get('name', ''),
+                'price': product.get('price', 0),
+                'quantity': product.get('quantity', 0),
+                'color': product.get('color', ''),
+                'size': product.get('size', ''),
+                'total': product.get('total', 0)
+            }
 
         # Product rows with size and color
         stt = 1
@@ -371,44 +333,26 @@ class InvoiceView:
                 (ma_hd, ma_kh, current_date)
             )
 
-            # Get cart items with size and color from database
+            # Use cart_products passed from cart_view (already selected items only)
+            # Get MaGH for deleting processed items from cart
             cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
             gh_result = cursor.fetchone()
             if gh_result:
                 ma_gh = gh_result[0]
 
-                # Get detailed cart items (bao gồm GiamGia)
-                cursor.execute("""
-                    SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.SoLuong, ghsp.MauSac, ghsp.Size, sp.GiamGia
-                    FROM giohangchuasanpham ghsp
-                    JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
-                    WHERE ghsp.MaGH = %s
-                """, (ma_gh,))
-
-                cart_items = cursor.fetchall()
-
-                # Group items and insert into cthoadon - Áp dụng giảm giá
+                # Use cart_products directly (already grouped and selected by cart_view)
+                # Convert cart_products to grouped_items format
                 grouped_items = {}
-                for ma_sp, ten_sp, gia, so_luong, mau_sac, size, giam_gia in cart_items:
-                    # Tính giá sau giảm (GiamGia là int: 0, 10, 15,...)
-                    discount_percent = int(giam_gia) if giam_gia else 0
-                    original_price = float(gia)
-                    discounted_price = original_price * (1 - discount_percent / 100)
-
-                    key = f"{ma_sp}_{mau_sac}_{size}"
-                    if key in grouped_items:
-                        grouped_items[key]['quantity'] += so_luong
-                        grouped_items[key]['total'] = grouped_items[key]['quantity'] * discounted_price
-                    else:
-                        grouped_items[key] = {
-                            'ma_sp': ma_sp,
-                            'ten_sp': ten_sp,
-                            'price': discounted_price,  # Giá đã giảm để lưu vào hóa đơn
-                            'quantity': so_luong,
-                            'color': mau_sac,
-                            'size': size,
-                            'total': discounted_price * so_luong
-                        }
+                for cart_key, product in cart_products.items():
+                    grouped_items[cart_key] = {
+                        'ma_sp': product.get('product_id', ''),
+                        'ten_sp': product.get('name', ''),
+                        'price': product.get('price', 0),
+                        'quantity': product.get('quantity', 0),
+                        'color': product.get('color', ''),
+                        'size': product.get('size', ''),
+                        'total': product.get('total', 0)
+                    }
 
                 # Insert grouped items into cthoadon and decrease product quantities
                 for item in grouped_items.values():
@@ -459,8 +403,12 @@ class InvoiceView:
                                            f"Sản phẩm: {item['ten_sp']}")
                         return
 
-                # Clear cart from database after payment
-                cursor.execute("DELETE FROM giohangchuasanpham WHERE MaGH = %s", (ma_gh,))
+                # Clear ONLY the selected items from cart after payment
+                for item in grouped_items.values():
+                    cursor.execute("""
+                        DELETE FROM giohangchuasanpham 
+                        WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
+                    """, (ma_gh, item['ma_sp'], item['color'], item['size']))
 
             conn.commit()
 
