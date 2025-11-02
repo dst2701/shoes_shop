@@ -94,7 +94,7 @@ class InvoiceHistoryView:
         tree.heading("Mã HĐ", text="Mã hóa đơn")
         tree.heading("Ngày lập", text="Ngày lập")
         tree.heading("Tổng tiền", text="Tổng tiền")
-        tree.heading("SL sản phẩm", text="Số lượng SP")
+        tree.heading("SL sản phẩm", text="Số lượng Sản Phẩm")
 
         # Column widths
         tree.column("STT", width=50, anchor='center')
@@ -105,8 +105,8 @@ class InvoiceHistoryView:
 
         # Configure treeview style
         style = ttk.Style()
-        style.configure("History.Treeview", font=('Arial', 11), rowheight=35)
-        style.configure("History.Treeview.Heading", font=('Arial', 12, 'bold'))
+        style.configure("History.Treeview", font=('Arial', 13), rowheight=35)
+        style.configure("History.Treeview.Heading", font=('Arial', 15, 'bold'))
         tree.configure(style="History.Treeview")
 
         # Action buttons frame
@@ -212,47 +212,95 @@ class InvoiceHistoryView:
                 status_label.config(text="Chọn hóa đơn để xem chi tiết", fg='#7f8c8d')
 
         def view_invoice_details():
-            """Show detailed view of selected invoice"""
+            """Show detailed view of selected invoice - A4 format"""
             selection = tree.selection()
             if not selection:
                 return
 
             ma_hd = selection[0]
 
-            # Create details window
+            # Create details window - Optimized for 16:9 screens with resizing capability
             details_window = tk.Toplevel(self.root)
-            details_window.title(f"Chi tiết hóa đơn {ma_hd}")
-            details_window.geometry("900x700")
-            details_window.resizable(False, False)
+            details_window.title(f"Hóa đơn #{ma_hd}")
+
+            # Get screen dimensions
+            screen_width = details_window.winfo_screenwidth()
+            screen_height = details_window.winfo_screenheight()
+
+            # Set window size to fit full invoice width (increased to 1050 to show right side completely)
+            window_width = 1050
+            window_height = int(screen_height * 0.85)  # 85% of screen height
+
+            details_window.geometry(f"{window_width}x{window_height}")
+            details_window.resizable(True, True)  # Allow resizing
+            details_window.minsize(950, 600)  # Minimum size (increased to fit invoice)
+            details_window.configure(bg='#f5f5f5')
 
             # Center window
             details_window.update_idletasks()
-            x = (details_window.winfo_screenwidth() // 2) - (900 // 2)
-            y = (details_window.winfo_screenheight() // 2) - (700 // 2)
-            details_window.geometry(f"+{x}+{y}")
+            x = (screen_width // 2) - (window_width // 2)
+            y = (screen_height // 2) - (window_height // 2)
+            details_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
             details_window.transient(self.root)
             details_window.grab_set()
             details_window.lift()
             details_window.focus_force()
 
-            # Header
-            header = tk.Frame(details_window, bg='#3498db', height=80)
-            header.pack(fill='x')
-            header.pack_propagate(False)
+            # Main container with button at bottom (not scrollable)
+            main_container = tk.Frame(details_window, bg='#f5f5f5')
+            main_container.pack(fill='both', expand=True)
 
-            tk.Label(header, text=f"CHI TIẾT HÓA ĐƠN: {ma_hd}",
-                    font=('Arial', 18, 'bold'), bg='#3498db', fg='white').pack(pady=25)
+            # Scrollable canvas for invoice content
+            canvas_frame = tk.Frame(main_container, bg='#f5f5f5')
+            canvas_frame.pack(fill='both', expand=True, padx=0, pady=0)
 
-            # Content
-            content = tk.Frame(details_window, bg='white', padx=30, pady=20)
-            content.pack(fill='both', expand=True)
+            main_canvas = tk.Canvas(canvas_frame, bg='#f5f5f5', highlightthickness=0)
+            main_scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=main_canvas.yview)
+
+            scrollable_frame = tk.Frame(main_canvas, bg='#f5f5f5')
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all"))
+            )
+
+            main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            main_canvas.configure(yscrollcommand=main_scrollbar.set)
+
+            # Enable mousewheel scrolling
+            def _on_mousewheel(event):
+                main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+            main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+            # Unbind mousewheel when window is closed
+            def _on_close():
+                main_canvas.unbind_all("<MouseWheel>")
+                details_window.destroy()
+
+            main_scrollbar.pack(side="right", fill="y")
+            main_canvas.pack(side="left", fill="both", expand=True)
+
+            # Fixed close button at bottom (outside scroll area)
+            button_container = tk.Frame(main_container, bg='#f5f5f5', height=70)
+            button_container.pack(fill='x', side='bottom', padx=20, pady=10)
+            button_container.pack_propagate(False)
+
+            btn_close = tk.Button(button_container, text="✖ Đóng", command=_on_close,
+                                 bg='#e74c3c', fg='white', font=('Arial', 12, 'bold'),
+                                 padx=40, pady=12, cursor='hand2', relief='raised', bd=2)
+            btn_close.pack(anchor='center')
+            add_button_hover_effect(btn_close, '#e74c3c', get_hover_color('#e74c3c'))
+
+            # A4 paper container with border (like the template) - adjusted to minimize right margin
+            paper = tk.Frame(scrollable_frame, bg='white', relief='solid', bd=2, padx=30, pady=30)
+            paper.pack(padx=2, pady=15, fill='both', expand=True)
 
             try:
                 conn = get_db_connection()
                 cursor = conn.cursor()
 
-                # Get invoice info
+                # Get invoice info (only columns that exist in khachhang table)
                 cursor.execute("""
                     SELECT hd.NgayLap, kh.TenKH, kh.SDT, kh.DiaChi
                     FROM hoadon hd
@@ -261,25 +309,121 @@ class InvoiceHistoryView:
                 """, (ma_hd,))
 
                 invoice_info = cursor.fetchone()
-                if invoice_info:
-                    ngay_lap, ten_kh, sdt, dia_chi = invoice_info
+                if not invoice_info:
+                    messagebox.showerror("Lỗi", "Không tìm thấy thông tin hóa đơn!")
+                    details_window.destroy()
+                    return
 
-                    # Invoice info section
-                    info_frame = tk.Frame(content, bg='#ecf0f1', relief='solid', bd=1)
-                    info_frame.pack(fill='x', pady=(0, 20))
+                ngay_lap, ten_kh, sdt, dia_chi = invoice_info
 
-                    info_inner = tk.Frame(info_frame, bg='#ecf0f1', padx=20, pady=15)
-                    info_inner.pack(fill='x')
+                # === TOP RED BORDER ===
+                top_border = tk.Frame(paper, bg='#8B0000', height=4)
+                top_border.pack(fill='x', pady=(0, 20))
 
-                    tk.Label(info_inner, text=f"Ngày lập: {ngay_lap.strftime('%d/%m/%Y')}",
-                            font=('Arial', 12), bg='#ecf0f1').pack(anchor='w', pady=2)
-                    tk.Label(info_inner, text=f"Khách hàng: {ten_kh}",
-                            font=('Arial', 12), bg='#ecf0f1').pack(anchor='w', pady=2)
-                    tk.Label(info_inner, text=f"SĐT: {sdt}",
-                            font=('Arial', 12), bg='#ecf0f1').pack(anchor='w', pady=2)
-                    tk.Label(info_inner, text=f"Địa chỉ: {dia_chi}",
-                            font=('Arial', 12), bg='#ecf0f1').pack(anchor='w', pady=2)
+                # === HEADER SECTION: INVOICE title + LOGO ===
+                header_frame = tk.Frame(paper, bg='white')
+                header_frame.pack(fill='x', pady=(0, 20))
 
+                # Left: INVOICE title
+                tk.Label(header_frame, text="HÓA ĐƠN BÁN HÀNG", font=('Arial', 24, 'bold'),
+                        bg='white', fg='#666666').pack(side='left', anchor='nw')
+
+                # Right: LOGO (image.png from root folder)
+                try:
+                    from PIL import Image, ImageTk
+                    import os
+                    # Try multiple paths
+                    possible_paths = [
+                        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'image.png'),  # Root folder
+                        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'images', 'image.png'),  # images folder
+                        'D:\\shop_giay\\shoes_shop\\image.png'  # Absolute path
+                    ]
+
+                    logo_loaded = False
+                    for logo_path in possible_paths:
+                        if os.path.exists(logo_path):
+                            logo_img = Image.open(logo_path)
+                            # Resize to circular-looking size
+                            logo_img = logo_img.resize((100, 100), Image.Resampling.LANCZOS)
+                            logo_photo = ImageTk.PhotoImage(logo_img)
+                            logo_label = tk.Label(header_frame, image=logo_photo, bg='white', bd=0, relief='flat')
+                            logo_label.image = logo_photo  # Keep reference
+                            logo_label.pack(side='right', anchor='ne', padx=(10, 0))
+                            logo_loaded = True
+                            break
+
+                    if not logo_loaded:
+                        # Fallback: Show "LOGO" text
+                        tk.Label(header_frame, text="LOGO", font=('Arial', 14, 'bold'),
+                                bg='#cccccc', fg='#666666', width=8, height=4, relief='solid', bd=1).pack(side='right', anchor='ne')
+                except Exception as e:
+                    print(f"Cannot load logo: {e}")
+                    # Fallback: Show "LOGO" text
+                    tk.Label(header_frame, text="LOGO", font=('Arial', 14, 'bold'),
+                            bg='#cccccc', fg='#666666', width=8, height=4, relief='solid', bd=1).pack(side='right', anchor='ne')
+
+                # === SHOP INFO (left) + INVOICE INFO (right) ===
+                info_section = tk.Frame(paper, bg='white')
+                info_section.pack(fill='x', pady=(0, 25))
+
+                # Left column: Shop info
+                shop_frame = tk.Frame(info_section, bg='white')
+                shop_frame.pack(side='left', anchor='nw')
+
+                tk.Label(shop_frame, text="Cửa Hàng Giày Nhóm 10", font=('Arial', 15, 'bold'),
+                        bg='white', fg='#2c3e50').pack(anchor='w')
+                tk.Label(shop_frame, text="Km10 Đ. Nguyễn Trãi, P. Mộ Lao, Hà Đông, Hà Nội", font=('Arial', 13),
+                        bg='white', fg='#555555').pack(anchor='w')
+                tk.Label(shop_frame, text="Số điện thoại: (028) 1234 5678", font=('Arial', 13),
+                        bg='white', fg='#555555').pack(anchor='w')
+                tk.Label(shop_frame, text="Email: nhom10@stu.ptit.edu.vn", font=('Arial', 13),
+                        bg='white', fg='#555555').pack(anchor='w')
+
+                # Right column: Invoice metadata
+                invoice_meta_frame = tk.Frame(info_section, bg='white')
+                invoice_meta_frame.pack(side='right', anchor='ne')
+
+                tk.Label(invoice_meta_frame, text="NGÀY LẬP", font=('Arial', 10, 'bold'),
+                        bg='white', fg='#888888').pack(anchor='e')
+                tk.Label(invoice_meta_frame, text=ngay_lap.strftime('%d/%m/%Y'), font=('Arial', 11),
+                        bg='white', fg='#2c3e50').pack(anchor='e', pady=(0, 8))
+
+                tk.Label(invoice_meta_frame, text="MÃ HÓA ĐƠN", font=('Arial', 10, 'bold'),
+                        bg='white', fg='#888888').pack(anchor='e')
+                tk.Label(invoice_meta_frame, text=ma_hd, font=('Arial', 11, 'bold'),
+                        bg='white', fg='#2c3e50').pack(anchor='e')
+
+                # === BILL TO + SHIP TO ===
+                billing_section = tk.Frame(paper, bg='white')
+                billing_section.pack(fill='x', pady=(0, 25))
+
+                # Left: BILL TO
+                bill_frame = tk.Frame(billing_section, bg='white')
+                bill_frame.pack(side='left', anchor='nw', fill='both', expand=True)
+
+                tk.Label(bill_frame, text="THÔNG TIN KHÁCH HÀNG", font=('Arial', 13, 'bold'),
+                        bg='white', fg='#2c3e50').pack(anchor='w')
+                tk.Label(bill_frame, text=ten_kh, font=('Arial', 12),
+                        bg='white', fg='#333333').pack(anchor='w', pady=(5, 0))
+                tk.Label(bill_frame, text=dia_chi if dia_chi else "Chưa cập nhật", font=('Arial', 12),
+                        bg='white', fg='#555555').pack(anchor='w')
+                tk.Label(bill_frame, text=f"Số điện thoại: {sdt}", font=('Arial', 12),
+                        bg='white', fg='#555555').pack(anchor='w')
+
+                # Right: SHIP TO (same as BILL TO for now)
+                ship_frame = tk.Frame(billing_section, bg='white')
+                ship_frame.pack(side='right', anchor='ne', fill='both', expand=True)
+
+                tk.Label(ship_frame, text="ĐỊA CHỈ GIAO HÀNG", font=('Arial', 13, 'bold'),
+                        bg='white', fg='#2c3e50').pack(anchor='w')
+                tk.Label(ship_frame, text=ten_kh, font=('Arial', 12),
+                        bg='white', fg='#333333').pack(anchor='w', pady=(5, 0))
+                tk.Label(ship_frame, text=dia_chi if dia_chi else "Chưa cập nhật", font=('Arial', 12),
+                        bg='white', fg='#555555').pack(anchor='w')
+                tk.Label(ship_frame, text=f"Số điện thoại: {sdt}", font=('Arial', 12),
+                        bg='white', fg='#555555').pack(anchor='w')
+
+                # === PRODUCTS TABLE ===
                 # Get invoice details (products)
                 cursor.execute("""
                     SELECT MaSP, TenSP, MauSac, Size, SoLuongMua, DonGia, ThanhTien
@@ -290,81 +434,140 @@ class InvoiceHistoryView:
 
                 products = cursor.fetchall()
 
-                # Products label
-                tk.Label(content, text="Danh sách sản phẩm:",
-                        font=('Arial', 14, 'bold'), bg='white').pack(anchor='w', pady=(0, 10))
+                # Table header (RED background like template) - Using place() for perfect alignment
+                table_header = tk.Frame(paper, bg='#8B0000', height=40)
+                table_header.pack(fill='x', pady=(0, 0))
+                table_header.pack_propagate(False)
 
-                # Products treeview
-                detail_tree_frame = tk.Frame(content, bg='white')
-                detail_tree_frame.pack(fill='both', expand=True)
+                # Define column widths (relative positions)
+                header_cols = [
+                    ("MÔ TẢ SẢN PHẨM", 0.00, 0.45, 'w'),
+                    ("SỐ LƯỢNG", 0.45, 0.15, 'center'),
+                    ("ĐƠN GIÁ", 0.60, 0.20, 'e'),
+                    ("THÀNH TIỀN", 0.80, 0.20, 'e')
+                ]
 
-                detail_vsb = tk.Scrollbar(detail_tree_frame, orient="vertical")
+                for text, relx, relwidth, anchor in header_cols:
+                    header_label = tk.Label(table_header, text=text, font=('Arial', 13, 'bold'),
+                                          bg='#8B0000', fg='white', anchor=anchor)
+                    header_label.place(relx=relx, rely=0, relwidth=relwidth, relheight=1)
 
-                detail_cols = ("STT", "Mã SP", "Tên sản phẩm", "Màu", "Size", "SL", "Đơn giá", "Thành tiền")
-                detail_tree = ttk.Treeview(detail_tree_frame, columns=detail_cols, show='headings',
-                                          yscrollcommand=detail_vsb.set, height=12)
+                # Table rows with place() layout
+                subtotal = 0
+                for idx, (ma_sp, ten_sp, mau_sac, size, so_luong, don_gia, thanh_tien) in enumerate(products):
+                    subtotal += thanh_tien
 
-                detail_vsb.config(command=detail_tree.yview)
-                detail_vsb.pack(side='right', fill='y')
-                detail_tree.pack(fill='both', expand=True)
+                    row_bg = '#f9f9f9' if idx % 2 == 0 else 'white'
+                    row_frame = tk.Frame(paper, bg=row_bg, height=32)
+                    row_frame.pack(fill='x')
+                    row_frame.pack_propagate(False)
 
-                # Configure columns
-                detail_tree.heading("STT", text="STT")
-                detail_tree.heading("Mã SP", text="Mã SP")
-                detail_tree.heading("Tên sản phẩm", text="Tên sản phẩm")
-                detail_tree.heading("Màu", text="Màu sắc")
-                detail_tree.heading("Size", text="Size")
-                detail_tree.heading("SL", text="SL")
-                detail_tree.heading("Đơn giá", text="Đơn giá")
-                detail_tree.heading("Thành tiền", text="Thành tiền")
+                    # Description column
+                    desc_text = f"{ten_sp} ({ma_sp}) - {mau_sac}/{size}"
+                    desc_label = tk.Label(row_frame, text=desc_text, font=('Arial', 9),
+                                         bg=row_bg, fg='#333333', anchor='w')
+                    desc_label.place(relx=0.00, rely=0, relwidth=0.45, relheight=1)
 
-                detail_tree.column("STT", width=40, anchor='center')
-                detail_tree.column("Mã SP", width=80, anchor='center')
-                detail_tree.column("Tên sản phẩm", width=200, anchor='w')
-                detail_tree.column("Màu", width=90, anchor='center')
-                detail_tree.column("Size", width=60, anchor='center')
-                detail_tree.column("SL", width=50, anchor='center')
-                detail_tree.column("Đơn giá", width=120, anchor='e')
-                detail_tree.column("Thành tiền", width=120, anchor='e')
+                    # Quantity column
+                    qty_label = tk.Label(row_frame, text=str(so_luong), font=('Arial', 9),
+                                        bg=row_bg, fg='#333333', anchor='center')
+                    qty_label.place(relx=0.45, rely=0, relwidth=0.15, relheight=1)
 
-                # Populate products
-                total = 0
-                for idx, (ma_sp, ten_sp, mau_sac, size, so_luong, don_gia, thanh_tien) in enumerate(products, 1):
-                    total += thanh_tien
-                    detail_tree.insert("", "end", values=(
-                        idx,
-                        ma_sp,
-                        ten_sp,
-                        mau_sac,
-                        size,
-                        so_luong,
-                        f"{don_gia:,.0f} VNĐ",
-                        f"{thanh_tien:,.0f} VNĐ"
-                    ))
+                    # Unit price column
+                    price_label = tk.Label(row_frame, text=f"{don_gia:,.0f} VNĐ", font=('Arial', 9),
+                                          bg=row_bg, fg='#333333', anchor='e')
+                    price_label.place(relx=0.60, rely=0, relwidth=0.20, relheight=1)
 
-                # Total frame
-                total_frame = tk.Frame(content, bg='white')
-                total_frame.pack(fill='x', pady=(20, 10))
+                    # Total column
+                    total_label = tk.Label(row_frame, text=f"{thanh_tien:,.0f} VNĐ", font=('Arial', 9),
+                                          bg=row_bg, fg='#333333', anchor='e')
+                    total_label.place(relx=0.80, rely=0, relwidth=0.20, relheight=1)
 
-                tk.Label(total_frame, text="TỔNG CỘNG:",
-                        font=('Arial', 16, 'bold'), bg='white', fg='#2c3e50').pack(side='left')
-                tk.Label(total_frame, text=f"{total:,.0f} VNĐ",
-                        font=('Arial', 16, 'bold'), bg='white', fg='#27ae60').pack(side='right')
+                # Add empty rows if needed (for design consistency)
+                for i in range(max(0, 5 - len(products))):
+                    empty_row = tk.Frame(paper, bg='white', height=30)
+                    empty_row.pack(fill='x')
+                    empty_row.pack_propagate(False)
+
+                # === TOTALS SECTION (Right aligned like template) ===
+                totals_container = tk.Frame(paper, bg='white')
+                totals_container.pack(fill='x', pady=(20, 0))
+
+                # Spacer to push totals to the right
+                tk.Frame(totals_container, bg='white', width=400).pack(side='left')
+
+                totals_frame = tk.Frame(totals_container, bg='white')
+                totals_frame.pack(side='right')
+
+                # Subtotal
+                subtotal_row = tk.Frame(totals_frame, bg='white')
+                subtotal_row.pack(fill='x', pady=3)
+                tk.Label(subtotal_row, text="Tạm tính:", font=('Arial', 13),
+                        bg='white', fg='#555555', width=25, anchor='e').pack(side='left', padx=(0, 20))
+                tk.Label(subtotal_row, text=f"{subtotal:,.0f} VNĐ", font=('Arial', 13),
+                        bg='white', fg='#333333', width=18, anchor='e').pack(side='left')
+
+                # Discount (0 for now)
+                discount_row = tk.Frame(totals_frame, bg='white')
+                discount_row.pack(fill='x', pady=3)
+                tk.Label(discount_row, text="Giảm giá:", font=('Arial', 13),
+                        bg='white', fg='#555555', width=25, anchor='e').pack(side='left', padx=(0, 20))
+                tk.Label(discount_row, text="0 VNĐ", font=('Arial', 13),
+                        bg='white', fg='#333333', width=18, anchor='e').pack(side='left')
+
+                # Tax (VAT)
+                tax_row = tk.Frame(totals_frame, bg='white')
+                tax_row.pack(fill='x', pady=3)
+                tk.Label(tax_row, text="Thuế VAT (0%):", font=('Arial', 13),
+                        bg='white', fg='#555555', width=25, anchor='e').pack(side='left', padx=(0, 20))
+                tk.Label(tax_row, text="0 VNĐ", font=('Arial', 13),
+                        bg='white', fg='#333333', width=18, anchor='e').pack(side='left')
+
+                # Shipping/Handling
+                shipping_row = tk.Frame(totals_frame, bg='white')
+                shipping_row.pack(fill='x', pady=3)
+                tk.Label(shipping_row, text="Phí vận chuyển:", font=('Arial', 13),
+                        bg='white', fg='#555555', width=25, anchor='e').pack(side='left', padx=(0, 20))
+                tk.Label(shipping_row, text="0 VNĐ", font=('Arial', 13),
+                        bg='white', fg='#333333', width=18, anchor='e').pack(side='left')
+
+                # Balance Due (Final total)
+                balance_row = tk.Frame(totals_frame, bg='white')
+                balance_row.pack(fill='x', pady=(10, 0))
+                tk.Label(balance_row, text="TỔNG CỘNG:", font=('Arial', 15, 'bold'),
+                        bg='white', fg='#2c3e50', width=25, anchor='e').pack(side='left', padx=(0, 20))
+                tk.Label(balance_row, text=f"{subtotal:,.0f} VNĐ", font=('Arial', 15, 'bold'),
+                        bg='white', fg='#27ae60', width=18, anchor='e').pack(side='left')
+
+                # === SIGNATURE SECTION (bottom right) ===
+                signature_section = tk.Frame(paper, bg='white')
+                signature_section.pack(fill='x', pady=(40, 20))
+
+                # Spacer
+                tk.Frame(signature_section, bg='white', width=450).pack(side='left')
+
+                signature_frame = tk.Frame(signature_section, bg='white')
+                signature_frame.pack(side='right')
+
+                # Signature line
+                tk.Frame(signature_frame, bg='#cccccc', height=1, width=200).pack(fill='x', pady=(30, 5))
+                tk.Label(signature_frame, text="Chữ ký Shop", font=('Arial', 13, 'italic'),
+                        bg='white', fg='#888888').pack()
+
+                # === BOTTOM RED BORDER ===
+                bottom_border = tk.Frame(paper, bg='#8B0000', height=4)
+                bottom_border.pack(fill='x', pady=(30, 0))
 
             except Exception as e:
                 messagebox.showerror("Lỗi", f"Không thể tải chi tiết: {str(e)}")
+                _on_close()
+                return
             finally:
                 if cursor:
                     cursor.close()
                 if conn:
                     conn.close()
 
-            # Close button
-            btn_close = tk.Button(content, text="Đóng", command=details_window.destroy,
-                                 bg='#95a5a6', fg='white', font=('Arial', 12, 'bold'),
-                                 padx=30, pady=10, cursor='hand2', relief='raised', bd=2)
-            btn_close.pack(pady=(10, 0))
-            add_button_hover_effect(btn_close, '#95a5a6', get_hover_color('#95a5a6'))
 
         # Bind events
         tree.bind("<<TreeviewSelect>>", on_invoice_select)
