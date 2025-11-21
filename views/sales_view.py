@@ -146,9 +146,9 @@ class SalesView:
 
         # Column headings
         tree.heading("STT", text="STT")
-        tree.heading("Mã SP", text="Mã SP")
+        tree.heading("Mã SP", text="Mã sản phẩm")
         tree.heading("Tên sản phẩm", text="Tên sản phẩm")
-        tree.heading("SL bán", text="SL bán")
+        tree.heading("SL bán", text="Số lượng bán")
         tree.heading("Doanh thu", text="Doanh thu")
 
         # Column widths
@@ -453,7 +453,7 @@ class SalesView:
 
             header_cols = [
                 ("STT", 0.00, 0.08, 'center'),
-                ("MÃ SP", 0.08, 0.15, 'center'),
+                ("MÃ SẢN PHẨM", 0.08, 0.15, 'center'),
                 ("TÊN SẢN PHẨM", 0.23, 0.37, 'w'),
                 ("SỐ LƯỢNG", 0.60, 0.15, 'center'),
                 ("DOANH THU", 0.75, 0.25, 'e')

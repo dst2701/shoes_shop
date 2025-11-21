@@ -866,10 +866,15 @@ class ProductView:
                 conn = get_db_connection()
                 cursor = conn.cursor()
 
-                # Delete product images first
+                # Delete all related records in correct order to avoid foreign key constraint errors
+
+                # 1. Delete from giohangchuasanpham (cart items) - products in customers' carts
+                cursor.execute("DELETE FROM giohangchuasanpham WHERE MaSP = %s", (ma_sp,))
+
+                # 2. Delete product images
                 cursor.execute("DELETE FROM url_sp WHERE MaSP = %s", (ma_sp,))
 
-                # Delete product from sanpham table
+                # 3. Delete product from sanpham table
                 # NOTE: cthoadon (invoice details) will KEEP the product data including TenSP
                 # This ensures sales statistics remain accurate even after product deletion
                 cursor.execute("DELETE FROM sanpham WHERE MaSP = %s", (ma_sp,))
