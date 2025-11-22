@@ -11,8 +11,10 @@ class InvoiceView:
     def __init__(self, root):
         self.root = root
 
-    def show_invoice_page(self, username, role, cart_products, total_amount, on_back_callback=None):
-        """Show invoice page - from main.py"""
+    def show_invoice_page(self, username, role, cart_products, total_amount, on_back_callback=None, ma_dh_to_delete=None):
+        """Show invoice page - from main.py
+        ma_dh_to_delete: Mã đơn hàng cần xóa sau khi thanh toán (nếu thanh toán từ đơn chưa thanh toán)
+        """
         for widget in self.root.winfo_children():
             widget.destroy()
 
@@ -22,7 +24,9 @@ class InvoiceView:
         # Get customer info from database
         customer_address = "Chưa cập nhật địa chỉ"
         customer_phone = "Chưa cập nhật số điện thoại"
-        invoice_id = ""
+
+        # Display order ID instead of invoice ID
+        display_order_id = ma_dh_to_delete if ma_dh_to_delete else "Đang tạo..."
 
         try:
             conn = get_db_connection()
@@ -35,14 +39,6 @@ class InvoiceView:
                 customer_address = result[0] if result[0] else "Chưa cập nhật địa chỉ"
                 customer_phone = result[1] if result[1] else "Chưa cập nhật số điện thoại"
                 ma_kh = result[2]
-
-                # Generate preview invoice ID
-                cursor.execute(
-                    "SELECT MAX(CAST(SUBSTRING(MaHD, 3) AS UNSIGNED)) FROM hoadon WHERE MaHD LIKE 'HD%'"
-                )
-                result = cursor.fetchone()
-                next_number = ((result[0] or 0) + 1) if result else 1
-                invoice_id = f"HD{next_number:03d}"
 
         except Exception as e:
             print(f"Error getting customer info: {e}")
@@ -60,10 +56,8 @@ class InvoiceView:
         header_container = tk.Frame(header_frame, bg='#2c3e50')
         header_container.pack(fill='both', expand=True, padx=10)
 
-        # Add invoice ID to header
-        header_title = f"📄 ĐƠN HÀNG CHI TIẾT"
-        if invoice_id:
-            header_title += f" - {invoice_id}"
+        # Add order ID to header (GHxxx instead of HDxxx)
+        header_title = f"📄 ĐƠN HÀNG CHI TIẾT - {display_order_id}"
 
         tk.Label(header_container, text=header_title, font=('Arial', 20, 'bold'),
                  fg='white', bg='#2c3e50').pack(side='left', pady=15)
@@ -109,10 +103,9 @@ class InvoiceView:
         left_info = tk.Frame(invoice_info_frame, bg='white')
         left_info.pack(side='left', fill='x', expand=True)
 
-        # Display invoice ID if available
-        if invoice_id:
-            tk.Label(left_info, text=f"Mã đơn hàng: {invoice_id}",
-                     font=('Arial', 12, 'bold'), bg='white', fg='#2c3e50').pack(anchor='w')
+        # Display order ID (GHxxx from donhang table)
+        tk.Label(left_info, text=f"Mã đơn hàng: {display_order_id}",
+                 font=('Arial', 12, 'bold'), bg='white', fg='#2c3e50').pack(anchor='w')
 
         tk.Label(left_info, text=f"Ngày lập: {current_time.strftime('%d/%m/%Y %H:%M')}",
                  font=('Arial', 12, 'bold'), bg='white', fg='#2c3e50').pack(anchor='w')
@@ -274,7 +267,7 @@ class InvoiceView:
 
         # Payment button with enhanced hover effect
         btn_payment = tk.Button(action_frame, text="💳 THANH TOÁN",
-                               command=lambda: self.process_payment_main(username, role, cart_products, total_amount, on_back_callback),
+                               command=lambda: self.process_payment_main(username, role, cart_products, total_amount, on_back_callback, ma_dh_to_delete),
                                bg='#27ae60', fg='white', font=('Arial', 16, 'bold'),
                                relief='raised', padx=40, pady=12, cursor='hand2', bd=3)
         btn_payment.pack(side='right')
@@ -290,8 +283,10 @@ class InvoiceView:
         # Add hover effect
         add_button_hover_effect(btn_print, '#3498db', get_hover_color('#3498db'))
 
-    def process_payment_main(self, username, role, cart_products, total_amount, on_back_callback):
-        """Process payment from invoice page - from main.py"""
+    def process_payment_main(self, username, role, cart_products, total_amount, on_back_callback, ma_dh_to_delete=None):
+        """Process payment from invoice page - from main.py
+        ma_dh_to_delete: Mã đơn hàng cần xóa sau khi thanh toán thành công
+        """
         if not cart_products:
             messagebox.showwarning("Cảnh báo", "Không có sản phẩm để thanh toán!")
             return
@@ -334,28 +329,21 @@ class InvoiceView:
             )
 
             # Use cart_products passed from cart_view (already selected items only)
-            # Get MaDH for deleting processed items from cart
-            cursor.execute("SELECT MaDH FROM donhang WHERE MaKH = %s", (ma_kh,))
-            gh_result = cursor.fetchone()
-            if gh_result:
-                ma_gh = gh_result[0]
+            # Convert cart_products to grouped_items format
+            grouped_items = {}
+            for cart_key, product in cart_products.items():
+                grouped_items[cart_key] = {
+                    'ma_sp': product.get('product_id', ''),
+                    'ten_sp': product.get('name', ''),
+                    'price': product.get('price', 0),
+                    'quantity': product.get('quantity', 0),
+                    'color': product.get('color', ''),
+                    'size': product.get('size', ''),
+                    'total': product.get('total', 0)
+                }
 
-                # Use cart_products directly (already grouped and selected by cart_view)
-                # Convert cart_products to grouped_items format
-                grouped_items = {}
-                for cart_key, product in cart_products.items():
-                    grouped_items[cart_key] = {
-                        'ma_sp': product.get('product_id', ''),
-                        'ten_sp': product.get('name', ''),
-                        'price': product.get('price', 0),
-                        'quantity': product.get('quantity', 0),
-                        'color': product.get('color', ''),
-                        'size': product.get('size', ''),
-                        'total': product.get('total', 0)
-                    }
-
-                # Insert grouped items into cthoadon and decrease product quantities
-                for item in grouped_items.values():
+            # Insert grouped items into cthoadon and decrease product quantities
+            for item in grouped_items.values():
                     # First check current stock before processing
                     cursor.execute("SELECT SoLuong FROM sanpham WHERE MaSP = %s", (item['ma_sp'],))
                     stock_result = cursor.fetchone()
@@ -403,12 +391,13 @@ class InvoiceView:
                                            f"Sản phẩm: {item['ten_sp']}")
                         return
 
-                # Clear ONLY the selected items from cart after payment
-                for item in grouped_items.values():
-                    cursor.execute("""
-                        DELETE FROM sptrongdon 
-                        WHERE MaDH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
-                    """, (ma_gh, item['ma_sp'], item['color'], item['size']))
+            # NEW: Xóa đơn hàng nếu thanh toán từ "Chưa thanh toán"
+            if ma_dh_to_delete:
+                # Delete all items in order
+                cursor.execute("DELETE FROM sptrongdon WHERE MaDH = %s", (ma_dh_to_delete,))
+                # Delete order itself
+                cursor.execute("DELETE FROM donhang WHERE MaDH = %s", (ma_dh_to_delete,))
+                print(f"✅ Deleted order {ma_dh_to_delete} after payment")
 
             conn.commit()
 

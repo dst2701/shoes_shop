@@ -14,51 +14,30 @@ from utils.ui_effects import add_button_hover_effect, COLORS, get_hover_color
 class ProductView:
     def __init__(self, root):
         self.root = root
-        self.cart = {}  # Memory cart for UI sync
         self.brand_combo = None  # Store reference to brand combo for refreshing
 
-    def load_cart_from_database(self, username):
-        """Load cart data from database - from main.py"""
+    def get_cart_count_from_db(self, username):
+        """Get cart count from database - giohangchuasanpham"""
         if not username:
-            return
+            return 0
 
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            # Get MaKH from username
             cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
             result = cursor.fetchone()
             if not result:
-                return
+                return 0
 
             ma_kh = result[0]
 
-            # Get MaGH from MaKH
-            cursor.execute("SELECT MaDH FROM donhang WHERE MaKH = %s", (ma_kh,))
-            gh_result = cursor.fetchone()
-            if not gh_result:
-                return
-
-            ma_gh = gh_result[0]
-
-            # Get all products in cart from database
-            cursor.execute("""
-                SELECT MaSP, SoLuong FROM sptrongdon 
-                WHERE MaDH = %s
-            """, (ma_gh,))
-
-            cart_items = cursor.fetchall()
-
-            # Clear and reload cart from database
-            self.cart.clear()
-            for ma_sp, so_luong in cart_items:
-                self.cart[ma_sp] = so_luong
-
-            print(f"Debug: Loaded cart from database: {self.cart}")
-
+            cursor.execute("SELECT SUM(SoLuong) FROM giohangchuasanpham WHERE MaKH = %s", (ma_kh,))
+            count_result = cursor.fetchone()
+            return count_result[0] if count_result and count_result[0] else 0
         except Exception as e:
-            print(f"Error loading cart from database: {e}")
+            print(f"❌ Error getting cart count: {e}")
+            return 0
         finally:
             if cursor:
                 cursor.close()
@@ -98,10 +77,6 @@ class ProductView:
         self.root.title("Shop Shoes - Danh sách sản phẩm")
         self.root.geometry("1200x750")
 
-        # Load cart data from database when login
-        if role == "buyer":
-            self.load_cart_from_database(username)
-
         header_frame = tk.Frame(self.root, bg='#2c3e50', height=60)
         header_frame.pack(fill='x')
         header_frame.pack_propagate(False)
@@ -116,45 +91,10 @@ class ProductView:
         if role == "buyer":
             # Cart button for buyers
             def update_cart_button():
-                """Calculate cart count from database for current user"""
-                if not username:
-                    return "🛒 Giỏ hàng (0)"
+                """Calculate cart count from database giohangchuasanpham"""
+                cart_count = self.get_cart_count_from_db(username)
+                return f"🛒 Giỏ hàng ({cart_count})"
 
-                try:
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-
-                    # Get MaKH from username
-                    cursor.execute("SELECT MaKH FROM khachhang WHERE TenDN = %s", (username,))
-                    result = cursor.fetchone()
-                    if not result:
-                        return "🛒 Giỏ hàng (0)"
-
-                    ma_kh = result[0]
-
-                    # Get MaGH from MaKH
-                    cursor.execute("SELECT MaDH FROM donhang WHERE MaKH = %s", (ma_kh,))
-                    gh_result = cursor.fetchone()
-                    if not gh_result:
-                        return "🛒 Giỏ hàng (0)"
-
-                    ma_gh = gh_result[0]
-
-                    # Calculate total quantity from sptrongdon
-                    cursor.execute("SELECT SUM(SoLuong) FROM sptrongdon WHERE MaDH = %s", (ma_gh,))
-                    count_result = cursor.fetchone()
-                    cart_count = count_result[0] if count_result and count_result[0] else 0
-
-                    return f"🛒 Giỏ hàng ({cart_count})"
-
-                except Exception as e:
-                    print(f"Error calculating cart count: {e}")
-                    return "🛒 Giỏ hàng (0)"
-                finally:
-                    if cursor:
-                        cursor.close()
-                    if conn:
-                        conn.close()
 
             btn_cart = tk.Button(header_container, text=update_cart_button(),
                                 command=lambda: self.show_cart_callback(username, role) if hasattr(self, 'show_cart_callback') else None,
@@ -714,12 +654,9 @@ class ProductView:
         '''
 
         def add_to_cart_with_quantity(ma_sp, ten_sp, selected_color, selected_size, quantity):
-            """Add product to cart with specified quantity"""
+            """Add product to cart - Save to DATABASE giohangchuasanpham"""
             print(f"Debug: Adding {quantity}x {ten_sp} (Color: {selected_color}, Size: {selected_size}) to cart")
 
-            # Save to database with selected color, size and quantity
-            conn = None
-            cursor = None
             try:
                 conn = get_db_connection()
                 cursor = conn.cursor()
@@ -730,97 +667,53 @@ class ProductView:
                 if not result:
                     messagebox.showerror("Lỗi", "Không tìm thấy thông tin khách hàng!")
                     return
-
                 ma_kh = result[0]
 
-                # Check and create cart if not exists
-                cursor.execute("SELECT MaDH FROM donhang WHERE MaKH = %s", (ma_kh,))
-                gh_result = cursor.fetchone()
-
-                if not gh_result:
-                    # Create new cart ID
-                    cursor.execute("SELECT MAX(CAST(SUBSTRING(MaDH, 3) AS UNSIGNED)) FROM donhang")
-                    max_result = cursor.fetchone()
-                    next_id = (max_result[0] + 1) if max_result[0] else 1
-                    ma_gh = f"GH{next_id:03d}"
-
-                    cursor.execute("INSERT INTO donhang (MaDH, MaKH) VALUES (%s, %s)", (ma_gh, ma_kh))
-                else:
-                    ma_gh = gh_result[0]
-
-                # CRITICAL VALIDATION: Check total stock vs total demand
-                # 1. Get current available stock for this product
-                cursor.execute("SELECT SoLuong FROM sanpham WHERE MaSP = %s", (ma_sp,))
+                # Get current available stock and discount
+                cursor.execute("SELECT SoLuong, GiamGia FROM sanpham WHERE MaSP = %s", (ma_sp,))
                 stock_result = cursor.fetchone()
-                available_stock = stock_result[0] if stock_result else 0
+                if not stock_result:
+                    messagebox.showerror("Lỗi", "Không tìm thấy sản phẩm!")
+                    return
 
-                # 2. Calculate total quantity of this product already in ALL carts (all users, all colors/sizes)
-                cursor.execute("""
-                    SELECT SUM(ghsp.SoLuong) 
-                    FROM sptrongdon ghsp
-                    WHERE ghsp.MaSP = %s
-                """, (ma_sp,))
-                total_in_carts_result = cursor.fetchone()
-                total_in_all_carts = total_in_carts_result[0] if total_in_carts_result and total_in_carts_result[0] else 0
+                available_stock, giam_gia = stock_result
 
-                # 3. Check if current user already has this specific color/size combination
+                # Check if cart already has this item
                 cursor.execute("""
-                    SELECT SoLuong FROM sptrongdon 
-                    WHERE MaDH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
-                """, (ma_gh, ma_sp, selected_color, selected_size))
+                    SELECT SoLuong FROM giohangchuasanpham 
+                    WHERE MaKH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
+                """, (ma_kh, ma_sp, selected_color, selected_size))
                 existing = cursor.fetchone()
-                current_user_has = existing[0] if existing else 0
+                current_quantity_in_cart = existing[0] if existing else 0
+                new_total_quantity = current_quantity_in_cart + quantity
 
-                # 4. Calculate what the new total would be
-                # If user already has this color/size combo, we're adding to it
-                # If not, we're adding a new entry
+                # Validation: Check stock
+                if new_total_quantity > available_stock:
+                    remaining = available_stock - current_quantity_in_cart
+                    messagebox.showwarning("Cảnh báo tồn kho",
+                                         f"Không thể thêm {quantity} sản phẩm '{ten_sp}'!\n\n"
+                                         f"📦 Tồn kho: {available_stock}\n"
+                                         f"🛒 Đã có trong giỏ: {current_quantity_in_cart}\n"
+                                         f"✅ Có thể thêm tối đa: {remaining}\n"
+                                         f"(Màu: {selected_color}, Size: {selected_size})")
+                    return
+
+                # Add or update cart in DATABASE
                 if existing:
-                    new_user_total = current_user_has + quantity
-                    total_demand_increase = quantity  # Only the new quantity adds to total demand
-                else:
-                    new_user_total = quantity
-                    total_demand_increase = quantity
-
-                new_total_in_carts = total_in_all_carts + total_demand_increase
-
-                # 5. VALIDATION: Check if adding this quantity would exceed available stock
-                if new_total_in_carts > available_stock:
-                    remaining_available = available_stock - total_in_all_carts
-                    if remaining_available <= 0:
-                        messagebox.showwarning("Hết hàng",
-                                             f"Sản phẩm '{ten_sp}' đã hết hàng!\n"
-                                             f"Hiện tại có {total_in_all_carts} sản phẩm trong giỏ hàng của các khách hàng khác.\n"
-                                             f"Tồn kho: {available_stock}")
-                        return
-                    else:
-                        messagebox.showwarning("Cảnh báo tồn kho",
-                                             f"Không thể thêm {quantity} sản phẩm '{ten_sp}'!\n\n"
-                                             f"📦 Tồn kho hiện tại: {available_stock}\n"
-                                             f"🛒 Đã có trong giỏ hàng (tất cả khách): {total_in_all_carts}\n"
-                                             f"✅ Có thể thêm tối đa: {remaining_available}\n\n"
-                                             f"Bạn đã có trong giỏ: {current_user_has} (màu {selected_color}, size {selected_size})")
-                        return
-
-                # 6. If validation passes, proceed to add/update cart
-                if existing:
-                    # Update existing cart item
                     cursor.execute("""
-                        UPDATE sptrongdon 
+                        UPDATE giohangchuasanpham 
                         SET SoLuong = %s 
-                        WHERE MaDH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
-                    """, (new_user_total, ma_gh, ma_sp, selected_color, selected_size))
-
+                        WHERE MaKH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
+                    """, (new_total_quantity, ma_kh, ma_sp, selected_color, selected_size))
                     success_message = (f"Đã cập nhật giỏ hàng!\n"
                                      f"Sản phẩm: {ten_sp}\n"
                                      f"Màu sắc: {selected_color}, Size: {selected_size}\n"
-                                     f"Số lượng mới: {new_user_total}")
+                                     f"Số lượng mới: {new_total_quantity}")
                 else:
-                    # Add new cart item
                     cursor.execute("""
-                        INSERT INTO sptrongdon (MaDH, MaSP, MauSac, Size, SoLuong)
+                        INSERT INTO giohangchuasanpham (MaKH, MaSP, MauSac, Size, SoLuong)
                         VALUES (%s, %s, %s, %s, %s)
-                    """, (ma_gh, ma_sp, selected_color, selected_size, quantity))
-
+                    """, (ma_kh, ma_sp, selected_color, selected_size, quantity))
                     success_message = (f"Đã thêm vào giỏ hàng!\n"
                                      f"Sản phẩm: {ten_sp}\n"
                                      f"Màu sắc: {selected_color}, Size: {selected_size}\n"
@@ -828,24 +721,19 @@ class ProductView:
 
                 conn.commit()
 
-                # Update memory cart to sync with UI (temporary)
-                cart_key = f"{ma_sp}_{selected_color}_{selected_size}"
-                if cart_key in self.cart:
-                    self.cart[cart_key] += quantity
-                else:
-                    self.cart[cart_key] = quantity
-
                 # Update cart button
                 btn_cart.config(text=update_cart_button())
 
-                # Show success message with stock info
-                remaining_after = available_stock - new_total_in_carts
+                # Show success message
+                remaining_after = available_stock - new_total_quantity
                 messagebox.showinfo("Thành công",
                                    f"{success_message}\n\n"
                                    f"📦 Còn lại trong kho: {remaining_after}")
 
             except Exception as e:
                 messagebox.showerror("Lỗi", f"Không thể thêm sản phẩm vào giỏ hàng: {str(e)}")
+                import traceback
+                traceback.print_exc()
             finally:
                 if cursor:
                     cursor.close()
@@ -868,13 +756,16 @@ class ProductView:
 
                 # Delete all related records in correct order to avoid foreign key constraint errors
 
-                # 1. Delete from sptrongdon (cart items) - products in customers' carts
+                # 1. Delete from giohangchuasanpham (temporary cart items)
+                cursor.execute("DELETE FROM giohangchuasanpham WHERE MaSP = %s", (ma_sp,))
+
+                # 2. Delete from sptrongdon (order items - unpaid orders)
                 cursor.execute("DELETE FROM sptrongdon WHERE MaSP = %s", (ma_sp,))
 
-                # 2. Delete product images
+                # 3. Delete product images
                 cursor.execute("DELETE FROM url_sp WHERE MaSP = %s", (ma_sp,))
 
-                # 3. Delete product from sanpham table
+                # 4. Delete product from sanpham table
                 # NOTE: cthoadon (invoice details) will KEEP the product data including TenSP
                 # This ensures sales statistics remain accurate even after product deletion
                 cursor.execute("DELETE FROM sanpham WHERE MaSP = %s", (ma_sp,))

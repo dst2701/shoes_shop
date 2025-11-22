@@ -88,10 +88,7 @@ def register_user(username, password, role, phone, address, full_name):
                 (customer_id, full_name, phone, address if address else None, username, password)
             )
 
-            # Tự động tạo giỏ hàng
-            cart_id = customer_id.replace('KH', 'GH')  # GH001 cho KH001
-            cursor.execute("INSERT INTO donhang (MaDH, MaKH) VALUES (%s, %s)",
-                         (cart_id, customer_id))
+            # Không tự động tạo đơn hàng nữa - đơn hàng sẽ được tạo khi khách hàng nhấn "Tạo đơn hàng"
         else:
             staff_id = generate_staff_id(cursor)
             cursor.execute(

@@ -47,8 +47,6 @@ class ShoesShopApp:
 
     def on_login_success(self, role, username):
         """Handle successful login"""
-        self.current_role = role
-        self.current_username = username
         self.product_view.show_shoes(role, username)
 
     def show_products(self, role, username):
@@ -56,7 +54,7 @@ class ShoesShopApp:
         self.product_view.show_shoes(role, username)
 
     def show_cart(self, username, role):
-        """Show cart page"""
+        """Show cart page - Load from database giohangchuasanpham"""
         self.cart_view.show_cart(username, role, self.show_products)
 
     def show_invoice_history(self, role, username):
@@ -65,8 +63,6 @@ class ShoesShopApp:
 
     def logout(self):
         """Handle logout"""
-        self.current_role = None
-        self.current_username = None
         self.login_view.show_login()
 
     def toggle_fullscreen(self, event=None):

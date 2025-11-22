@@ -34,7 +34,6 @@ CREATE TABLE `cthoadon` (
   PRIMARY KEY (`MaHD`,`MaSP`,`MauSac`,`Size`),
   KEY `MaSP` (`MaSP`),
   CONSTRAINT `cthoadon_ibfk_1` FOREIGN KEY (`MaHD`) REFERENCES `hoadon` (`MaHD`),
-  CONSTRAINT `cthoadon_ibfk_2` FOREIGN KEY (`MaSP`) REFERENCES `sanpham` (`MaSP`),
   CONSTRAINT `cthoadon_chk_1` CHECK ((`SoLuongMua` >= 0)),
   CONSTRAINT `cthoadon_chk_2` CHECK ((`DonGia` > 0))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -46,7 +45,7 @@ CREATE TABLE `cthoadon` (
 
 LOCK TABLES `cthoadon` WRITE;
 /*!40000 ALTER TABLE `cthoadon` DISABLE KEYS */;
-INSERT INTO `cthoadon` VALUES ('HD001','SP001','Nike Metcon 9 By You','Đen','41',1,4999000.00,4999000.00),('HD001','SP002','Giày Streettalk','Trắng','42',2,1200000.00,2400000.00),('HD003','SP001','Nike Metcon 9 By You','Trắng','42',1,4999000.00,4999000.00),('HD003','SP002','Giày Streettalk','Trắng','43',3,1200000.00,3600000.00),('HD004','SP001','Nike Metcon 9 By You','Xanh dương','43',1,4999000.00,4999000.00),('HD005','SP002','Giày Streettalk','Trắng','44',1,1200000.00,1200000.00),('HD006','SP002','Giày Streettalk','Trắng','42',2,1200000.00,2400000.00),('HD007','SP001','Nike Metcon 9 By You','Xanh dương','41',1,4999000.00,4999000.00),('HD008','SP001','Nike Metcon 9 By You','Đen','42',1,4999000.00,4999000.00),('HD009','SP002','Giày Streettalk','Trắng','43',2,1200000.00,2400000.00),('HD010','SP001','Nike Metcon 9 By You','Trắng','44',1,4999000.00,4999000.00),('HD010','SP002','Giày Streettalk','Trắng','42',1,1200000.00,1200000.00),('HD011','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD011','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD012','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD012','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD013','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD013','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD014','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD014','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD015','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD015','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD016','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',2,4999000.00,9998000.00),('HD016','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD017','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD018','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD018','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD019','SP001','Nike Metcon 9 By You','Trắng','42',1,4999000.00,4999000.00),('HD020','SP001','Nike Metcon 9 By You','Đen','42',8,4999000.00,39992000.00),('HD020','SP001','Nike Metcon 9 By You','Trắng','42',10,4999000.00,49990000.00),('HD020','SP002','Giày Streettalk','Đen','40',3,1200000.00,3600000.00),('HD020','SP002','Giày Streettalk','Nâu','37',1,1200000.00,1200000.00),('HD021','SP001','Nike Metcon 9 By You','Đen','42',76,4999000.00,379924000.00),('HD025','SP004','giày đè tem','Khô gà','42',1,1200000.00,1200000.00),('HD026','SP001','Nike Metcon 9 By You','Xanh Dương','43',3,4999000.00,14997000.00),('HD026','SP002','Giày Streettalk','Nâu','37',5,1200000.00,6000000.00),('HD026','SP003','Giày Handball Special','Nâu','42',6,2500000.00,15000000.00),('HD027','SP003','Giày Handball Special','Đen','41',10,2500000.00,25000000.00),('HD028','SP002','Giày Streettalk','Trắng','42',95,1200000.00,114000000.00),('HD029','SP002','Giày Streettalk','Đen','39',10,1200000.00,12000000.00),('HD030','SP003','Giày Handball Special','Trắng','42',13,2500000.00,32500000.00),('HD031','SP003','Giày Handball Special','Đen','42',100,2500000.00,250000000.00),('HD032','SP002','Giày Streettalk','Đen','42',1,1200000.00,1200000.00),('HD032','SP003','Giày Handball Special','Trắng','38',1,2500000.00,2500000.00),('HD032','SP004','giày đè tem','Đỏ','42',5,1200000.00,6000000.00),('HD032','SP004','giày đè tem','Xanh Dương','45',1,1200000.00,1200000.00),('HD033','SP003','Giày Handball Special','Đen','42',50,4500000.00,225000000.00),('HD034','SP003','Giày Handball Special','Đen','42',5,4500000.00,22500000.00),('HD035','SP003','Giày Handball Special','Nâu','37',5,2500000.00,12500000.00),('HD036','SP002','Giày Streettalk','Nâu','38',1,1200000.00,1200000.00),('HD036','SP003','Giày Handball Special','Xanh Dương','36',1,2500000.00,2500000.00),('HD036','SP003','Giày Handball Special','Xanh Dương','37',1,2500000.00,2500000.00),('HD037','SP002','Giày Streettalk','Trắng','45',4,1200000.00,4800000.00),('HD038','SP002','Giày Streettalk','Đen','42',1,1200000.00,1200000.00),('HD039','SP002','Giày Streettalk','Nâu','36',5,1200000.00,6000000.00),('HD039','SP003','Giày Handball Special','Nâu','42',3,2500000.00,7500000.00),('HD039','SP004','giày đè tem','Đen','36',5,1200000.00,6000000.00);
+INSERT INTO `cthoadon` VALUES ('HD001','SP001','Nike Metcon 9 By You','Đen','41',1,4999000.00,4999000.00),('HD001','SP002','Giày Streettalk','Trắng','42',2,1200000.00,2400000.00),('HD003','SP001','Nike Metcon 9 By You','Trắng','42',1,4999000.00,4999000.00),('HD003','SP002','Giày Streettalk','Trắng','43',3,1200000.00,3600000.00),('HD004','SP001','Nike Metcon 9 By You','Xanh dương','43',1,4999000.00,4999000.00),('HD005','SP002','Giày Streettalk','Trắng','44',1,1200000.00,1200000.00),('HD006','SP002','Giày Streettalk','Trắng','42',2,1200000.00,2400000.00),('HD007','SP001','Nike Metcon 9 By You','Xanh dương','41',1,4999000.00,4999000.00),('HD008','SP001','Nike Metcon 9 By You','Đen','42',1,4999000.00,4999000.00),('HD009','SP002','Giày Streettalk','Trắng','43',2,1200000.00,2400000.00),('HD010','SP001','Nike Metcon 9 By You','Trắng','44',1,4999000.00,4999000.00),('HD010','SP002','Giày Streettalk','Trắng','42',1,1200000.00,1200000.00),('HD011','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD011','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD012','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD012','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD013','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD013','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD014','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD014','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD015','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD015','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD016','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',2,4999000.00,9998000.00),('HD016','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD017','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD018','SP001','Nike Metcon 9 By You','Mặc định','Mặc định',1,4999000.00,4999000.00),('HD018','SP002','Giày Streettalk','Mặc định','Mặc định',1,1200000.00,1200000.00),('HD019','SP001','Nike Metcon 9 By You','Trắng','42',1,4999000.00,4999000.00),('HD020','SP001','Nike Metcon 9 By You','Đen','42',8,4999000.00,39992000.00),('HD020','SP001','Nike Metcon 9 By You','Trắng','42',10,4999000.00,49990000.00),('HD020','SP002','Giày Streettalk','Đen','40',3,1200000.00,3600000.00),('HD020','SP002','Giày Streettalk','Nâu','37',1,1200000.00,1200000.00),('HD021','SP001','Nike Metcon 9 By You','Đen','42',76,4999000.00,379924000.00),('HD025','SP004','giày đè tem','Khô gà','42',1,1200000.00,1200000.00),('HD026','SP001','Nike Metcon 9 By You','Xanh Dương','43',3,4999000.00,14997000.00),('HD026','SP002','Giày Streettalk','Nâu','37',5,1200000.00,6000000.00),('HD026','SP003','Giày Handball Special','Nâu','42',6,2500000.00,15000000.00),('HD027','SP003','Giày Handball Special','Đen','41',10,2500000.00,25000000.00),('HD028','SP002','Giày Streettalk','Trắng','42',95,1200000.00,114000000.00),('HD029','SP002','Giày Streettalk','Đen','39',10,1200000.00,12000000.00),('HD030','SP003','Giày Handball Special','Trắng','42',13,2500000.00,32500000.00),('HD031','SP003','Giày Handball Special','Đen','42',100,2500000.00,250000000.00),('HD032','SP002','Giày Streettalk','Đen','42',1,1200000.00,1200000.00),('HD032','SP003','Giày Handball Special','Trắng','38',1,2500000.00,2500000.00),('HD032','SP004','giày đè tem','Đỏ','42',5,1200000.00,6000000.00),('HD032','SP004','giày đè tem','Xanh Dương','45',1,1200000.00,1200000.00),('HD033','SP003','Giày Handball Special','Đen','42',50,4500000.00,225000000.00),('HD034','SP003','Giày Handball Special','Đen','42',5,4500000.00,22500000.00),('HD035','SP003','Giày Handball Special','Nâu','37',5,2500000.00,12500000.00),('HD036','SP002','Giày Streettalk','Nâu','38',1,1200000.00,1200000.00),('HD036','SP003','Giày Handball Special','Xanh Dương','36',1,2500000.00,2500000.00),('HD036','SP003','Giày Handball Special','Xanh Dương','37',1,2500000.00,2500000.00),('HD037','SP002','Giày Streettalk','Trắng','45',4,1200000.00,4800000.00),('HD038','SP002','Giày Streettalk','Đen','42',1,1200000.00,1200000.00),('HD039','SP002','Giày Streettalk','Nâu','36',5,1200000.00,6000000.00),('HD039','SP003','Giày Handball Special','Nâu','42',3,2500000.00,7500000.00),('HD039','SP004','giày đè tem','Đen','36',5,1200000.00,6000000.00),('HD040','SP002','Giày Streettalk','Đen','42',2,1200000.00,2400000.00),('HD040','SP002','Giày Streettalk','Trắng','45',5,1200000.00,6000000.00),('HD041','SP001','Nike Metcon 9 By You','Trắng','36',1,4999000.00,4999000.00),('HD041','SP002','Giày Streettalk','Đen','42',1,1200000.00,1200000.00),('HD042','SP004','giày đè tem','Đen','42',1,1080000.00,1080000.00),('HD043','SP004','giày đè tem','Đen','42',1,1080000.00,1080000.00),('HD044','SP002','Giày Streettalk','Nâu','39',1,1200000.00,1200000.00),('HD045','SP005','ok','Đen','42',4,1000.00,4000.00);
 /*!40000 ALTER TABLE `cthoadon` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -62,7 +61,7 @@ CREATE TABLE `donhang` (
   `MaKH` varchar(30) NOT NULL,
   `NgayLap` datetime DEFAULT NULL,
   PRIMARY KEY (`MaDH`),
-  UNIQUE KEY `MaKH` (`MaKH`),
+  KEY `donhang_ibfk_1` (`MaKH`),
   CONSTRAINT `donhang_ibfk_1` FOREIGN KEY (`MaKH`) REFERENCES `khachhang` (`MaKH`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -73,8 +72,38 @@ CREATE TABLE `donhang` (
 
 LOCK TABLES `donhang` WRITE;
 /*!40000 ALTER TABLE `donhang` DISABLE KEYS */;
-INSERT INTO `donhang` VALUES ('GH001','KH001',NULL),('GH002','KH002',NULL),('GH003','KH003',NULL),('GH004','KH004',NULL),('GH005','KH005',NULL),('GH006','KH006',NULL),('GH007','KH007',NULL),('GH008','KH008',NULL),('GH009','KH009',NULL),('GH010','KH010',NULL),('GH013','KH013',NULL),('GH014','KH014',NULL),('GH015','KH011',NULL);
+INSERT INTO `donhang` VALUES ('GH001','KH001',NULL),('GH002','KH002',NULL),('GH003','KH003',NULL),('GH004','KH004',NULL),('GH005','KH005',NULL),('GH006','KH006',NULL),('GH007','KH007',NULL),('GH008','KH008',NULL),('GH009','KH009',NULL),('GH010','KH010',NULL),('GH013','KH013',NULL),('GH015','KH011',NULL),('GH016','KH014','2025-11-22 19:21:31'),('GH017','KH014','2025-11-22 20:13:43'),('GH018','KH014','2025-11-22 20:27:35');
 /*!40000 ALTER TABLE `donhang` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `giohangchuasanpham`
+--
+
+DROP TABLE IF EXISTS `giohangchuasanpham`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `giohangchuasanpham` (
+  `MaKH` varchar(30) NOT NULL COMMENT 'Mã khách hàng - tham chiếu đến bảng khachhang',
+  `MaSP` varchar(30) NOT NULL COMMENT 'Mã sản phẩm',
+  `MauSac` varchar(100) NOT NULL COMMENT 'Màu sắc sản phẩm',
+  `Size` varchar(20) NOT NULL COMMENT 'Kích cỡ sản phẩm',
+  `SoLuong` int NOT NULL COMMENT 'Số lượng sản phẩm trong giỏ',
+  PRIMARY KEY (`MaKH`,`MaSP`,`MauSac`,`Size`),
+  KEY `MaSP` (`MaSP`),
+  CONSTRAINT `giohangchuasanpham_ibfk_1` FOREIGN KEY (`MaKH`) REFERENCES `khachhang` (`MaKH`) ON DELETE CASCADE,
+  CONSTRAINT `giohangchuasanpham_ibfk_2` FOREIGN KEY (`MaSP`) REFERENCES `sanpham` (`MaSP`) ON DELETE CASCADE,
+  CONSTRAINT `giohangchuasanpham_chk_1` CHECK ((`SoLuong` > 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Giỏ hàng tạm - Lưu sản phẩm trước khi tạo đơn hàng';
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `giohangchuasanpham`
+--
+
+LOCK TABLES `giohangchuasanpham` WRITE;
+/*!40000 ALTER TABLE `giohangchuasanpham` DISABLE KEYS */;
+/*!40000 ALTER TABLE `giohangchuasanpham` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -103,7 +132,7 @@ CREATE TABLE `hoadon` (
 
 LOCK TABLES `hoadon` WRITE;
 /*!40000 ALTER TABLE `hoadon` DISABLE KEYS */;
-INSERT INTO `hoadon` VALUES ('HD001','KH001','B23DCCN143','2025-10-09'),('HD002','KH002','B23DCCN302','2025-10-09'),('HD003','KH003','B23DCCN452','2025-10-09'),('HD004','KH004','B23DCCN898','2025-10-09'),('HD005','KH005','B23DCCN926','2025-10-09'),('HD006','KH006','B23DCCN143','2025-10-09'),('HD007','KH007','B23DCCN302','2025-10-09'),('HD008','KH008','B23DCCN452','2025-10-09'),('HD009','KH009','B23DCCN898','2025-10-09'),('HD010','KH010','B23DCCN926','2025-10-09'),('HD011','KH012',NULL,'2025-10-15'),('HD012','KH012',NULL,'2025-10-15'),('HD013','KH012',NULL,'2025-10-16'),('HD014','KH012',NULL,'2025-10-16'),('HD015','KH014',NULL,'2025-10-16'),('HD016','KH014',NULL,'2025-10-16'),('HD017','KH014',NULL,'2025-10-16'),('HD018','KH013',NULL,'2025-10-16'),('HD019','KH014',NULL,'2025-10-16'),('HD020','KH014',NULL,'2025-10-17'),('HD021','KH014',NULL,'2025-10-17'),('HD022','KH014',NULL,'2025-10-17'),('HD023','KH014',NULL,'2025-10-17'),('HD024','KH013',NULL,'2025-10-17'),('HD025','KH014',NULL,'2025-10-28'),('HD026','KH014',NULL,'2025-10-28'),('HD027','KH014',NULL,'2025-10-28'),('HD028','KH014',NULL,'2025-10-28'),('HD029','KH014',NULL,'2025-10-28'),('HD030','KH014',NULL,'2025-10-28'),('HD031','KH014',NULL,'2025-10-28'),('HD032','KH014',NULL,'2025-10-28'),('HD033','KH014',NULL,'2025-10-28'),('HD034','KH014',NULL,'2025-10-28'),('HD035','KH014',NULL,'2025-10-29'),('HD036','KH014',NULL,'2025-10-29'),('HD037','KH014',NULL,'2025-10-29'),('HD038','KH014',NULL,'2025-10-29'),('HD039','KH011',NULL,'2025-10-29');
+INSERT INTO `hoadon` VALUES ('HD001','KH001','B23DCCN143','2025-10-09'),('HD002','KH002','B23DCCN302','2025-10-09'),('HD003','KH003','B23DCCN452','2025-10-09'),('HD004','KH004','B23DCCN898','2025-10-09'),('HD005','KH005','B23DCCN926','2025-10-09'),('HD006','KH006','B23DCCN143','2025-10-09'),('HD007','KH007','B23DCCN302','2025-10-09'),('HD008','KH008','B23DCCN452','2025-10-09'),('HD009','KH009','B23DCCN898','2025-10-09'),('HD010','KH010','B23DCCN926','2025-10-09'),('HD011','KH012',NULL,'2025-10-15'),('HD012','KH012',NULL,'2025-10-15'),('HD013','KH012',NULL,'2025-10-16'),('HD014','KH012',NULL,'2025-10-16'),('HD015','KH014',NULL,'2025-10-16'),('HD016','KH014',NULL,'2025-10-16'),('HD017','KH014',NULL,'2025-10-16'),('HD018','KH013',NULL,'2025-10-16'),('HD019','KH014',NULL,'2025-10-16'),('HD020','KH014',NULL,'2025-10-17'),('HD021','KH014',NULL,'2025-10-17'),('HD022','KH014',NULL,'2025-10-17'),('HD023','KH014',NULL,'2025-10-17'),('HD024','KH013',NULL,'2025-10-17'),('HD025','KH014',NULL,'2025-10-28'),('HD026','KH014',NULL,'2025-10-28'),('HD027','KH014',NULL,'2025-10-28'),('HD028','KH014',NULL,'2025-10-28'),('HD029','KH014',NULL,'2025-10-28'),('HD030','KH014',NULL,'2025-10-28'),('HD031','KH014',NULL,'2025-10-28'),('HD032','KH014',NULL,'2025-10-28'),('HD033','KH014',NULL,'2025-10-28'),('HD034','KH014',NULL,'2025-10-28'),('HD035','KH014',NULL,'2025-10-29'),('HD036','KH014',NULL,'2025-10-29'),('HD037','KH014',NULL,'2025-10-29'),('HD038','KH014',NULL,'2025-10-29'),('HD039','KH011',NULL,'2025-10-29'),('HD040','KH014',NULL,'2025-11-22'),('HD041','KH014',NULL,'2025-11-22'),('HD042','KH014',NULL,'2025-11-22'),('HD043','KH014',NULL,'2025-11-22'),('HD044','KH014',NULL,'2025-11-22'),('HD045','KH014',NULL,'2025-11-22');
 /*!40000 ALTER TABLE `hoadon` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -222,7 +251,7 @@ CREATE TABLE `sanpham` (
 
 LOCK TABLES `sanpham` WRITE;
 /*!40000 ALTER TABLE `sanpham` DISABLE KEYS */;
-INSERT INTO `sanpham` VALUES ('SP001','Nike Metcon 9 By You',4999000.00,'Đôi giày này dành cho những ai muốn khẳng định cá tính.','TH001',2,'2025-06-09',0),('SP002','Giày Streettalk',1200000.00,'Đôi giày này dành cho những ai muốn khẳng định cá tính.','TH002',178,'2025-06-09',0),('SP003','Giày Handball Special',2500000.00,'Đôi giày này dành cho những ai muốn khẳng định cá tính.','TH002',134,'2025-06-09',0),('SP004','giày đè tem',1200000.00,'alo vũ phải k em hahahaha','TH003',108,'2025-02-09',0);
+INSERT INTO `sanpham` VALUES ('SP001','Nike Metcon 9 By You',4999000.00,'Đôi giày này dành cho những ai muốn khẳng định cá tính.','TH001',199,'2025-06-09',0),('SP002','Giày Streettalk',1200000.00,'Đôi giày này dành cho những ai muốn khẳng định cá tính.','TH002',169,'2025-06-09',0),('SP003','Giày Handball Special',2500000.00,'Đôi giày này dành cho những ai muốn khẳng định cá tính.','TH002',134,'2025-06-09',0),('SP004','giày đè tem',1200000.00,'alo vũ phải k em hahahaha','TH003',106,'2025-02-09',10);
 /*!40000 ALTER TABLE `sanpham` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -253,7 +282,7 @@ CREATE TABLE `sptrongdon` (
 
 LOCK TABLES `sptrongdon` WRITE;
 /*!40000 ALTER TABLE `sptrongdon` DISABLE KEYS */;
-INSERT INTO `sptrongdon` VALUES ('GH014','SP001','Đen','36',1),('GH014','SP001','Đen','37',1),('GH014','SP002','Đen','39',1),('GH014','SP002','Đen','41',2),('GH014','SP002','Đen','43',1),('GH014','SP002','Đen','44',1),('GH014','SP002','Đen','45',1),('GH014','SP003','Đen','39',1),('GH014','SP003','Xanh Dương','45',1),('GH014','SP004','Đen','42',1);
+INSERT INTO `sptrongdon` VALUES ('GH016','SP001','Xanh Dương','36',1),('GH016','SP003','Đen','42',5),('GH017','SP003','Đen','42',3),('GH018','SP002','Đen','42',1);
 /*!40000 ALTER TABLE `sptrongdon` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -316,4 +345,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-11-22 17:48:24
+-- Dump completed on 2025-11-22 20:48:56
