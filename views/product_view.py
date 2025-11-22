@@ -556,10 +556,26 @@ class ProductView:
                 tk.Label(size_label_frame, text="Kích cỡ:", font=('Arial', 11, 'bold'),
                         bg='white').pack(side='left')
 
-                size_var = tk.StringVar(value="42")
+                # Get sizes from database
+                try:
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT Size FROM size_sp WHERE MaSP = %s ORDER BY CAST(Size AS UNSIGNED)", (product_id,))
+                    sizes = [row[0] for row in cursor.fetchall()]
+                    if not sizes:
+                        sizes = [str(i) for i in range(36, 46)]
+                except:
+                    sizes = [str(i) for i in range(36, 46)]
+                finally:
+                    if 'cursor' in locals() and cursor:
+                        cursor.close()
+                    if 'conn' in locals() and conn:
+                        conn.close()
+
+                size_var = tk.StringVar(value=sizes[0] if sizes else "42")
                 size_combo = ttk.Combobox(config_frame, textvariable=size_var, width=25,
                                          state='readonly', font=('Arial', 11),
-                                         values=[str(i) for i in range(36, 46)])
+                                         values=sizes)
                 size_combo.pack(fill='x', pady=(0, 8))
 
                 # Quantity selection
@@ -1278,6 +1294,12 @@ class ProductView:
         text_colors.insert(1.0, "Trắng\nXanh Dương\nĐen\nNâu")  # Default colors
         text_colors.pack(padx=10, pady=(0, 8))
 
+        # Sizes (Available sizes for this product)
+        tk.Label(main_container, text="Kích cỡ có sẵn (mỗi size một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        text_sizes = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')
+        text_sizes.insert(1.0, "\n".join([str(i) for i in range(36, 46)]))  # Default sizes 36-45
+        text_sizes.pack(padx=10, pady=(0, 8))
+
         # Image URLs
         tk.Label(main_container, text="URL hình ảnh (mỗi URL một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
         text_images = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')
@@ -1377,6 +1399,16 @@ class ProductView:
                     )
                 """)
 
+                # Create size table if not exists
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS size_sp (
+                        MaSP VARCHAR(30) NOT NULL,
+                        Size VARCHAR(20) NOT NULL,
+                        PRIMARY KEY (MaSP, Size),
+                        FOREIGN KEY (MaSP) REFERENCES sanpham(MaSP) ON DELETE CASCADE
+                    )
+                """)
+
                 # Generate new product ID
                 cursor.execute("SELECT MAX(CAST(SUBSTRING(MaSP, 3) AS UNSIGNED)) FROM sanpham WHERE MaSP LIKE 'SP%'")
                 result = cursor.fetchone()
@@ -1395,6 +1427,13 @@ class ProductView:
                     color_list = [color.strip() for color in colors.split('\n') if color.strip()]
                     for color in color_list:
                         cursor.execute("INSERT INTO mausac_sp (MaSP, MauSac) VALUES (%s, %s)", (product_id, color))
+
+                # Insert sizes if provided
+                sizes = text_sizes.get(1.0, tk.END).strip()
+                if sizes:
+                    size_list = [size.strip() for size in sizes.split('\n') if size.strip()]
+                    for size in size_list:
+                        cursor.execute("INSERT INTO size_sp (MaSP, Size) VALUES (%s, %s)", (product_id, size))
 
                 # Insert image URLs if provided
                 if image_urls:
@@ -1480,6 +1519,16 @@ class ProductView:
                 # If table doesn't exist yet, use default colors
                 print(f"Note: Color table may not exist yet: {e}")
                 current_colors = ["Trắng", "Xanh Dương", "Đen", "Nâu"]
+
+            # Get product sizes
+            current_sizes = []
+            try:
+                cursor.execute("SELECT Size FROM size_sp WHERE MaSP = %s ORDER BY CAST(Size AS UNSIGNED)", (product_id,))
+                current_sizes = [row[0] for row in cursor.fetchall()]
+            except Exception as e:
+                # If table doesn't exist yet, use default sizes
+                print(f"Note: Size table may not exist yet: {e}")
+                current_sizes = [str(i) for i in range(36, 46)]
 
         except Exception as e:
             messagebox.showerror("Lỗi", f"Không thể tải dữ liệu sản phẩm: {str(e)}")
@@ -1608,6 +1657,15 @@ class ProductView:
             text_colors.insert(1.0, "Trắng\nXanh Dương\nĐen\nNâu")  # Default colors
         text_colors.pack(padx=10, pady=(0, 8))
 
+        # Sizes (Available sizes for this product)
+        tk.Label(main_container, text="Kích cỡ có sẵn (mỗi size một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
+        text_sizes_edit = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')
+        if current_sizes:
+            text_sizes_edit.insert(1.0, '\n'.join(current_sizes))
+        else:
+            text_sizes_edit.insert(1.0, "\n".join([str(i) for i in range(36, 46)]))  # Default sizes
+        text_sizes_edit.pack(padx=10, pady=(0, 8))
+
         # Image URLs
         tk.Label(main_container, text="URL hình ảnh (mỗi URL một dòng):", font=('Arial', 12, 'bold')).pack(anchor='w', padx=10, pady=(5, 2))
         text_images = tk.Text(main_container, font=('Arial', 11), width=42, height=3, wrap='word')
@@ -1709,6 +1767,16 @@ class ProductView:
                     )
                 """)
 
+                # Create size table if not exists
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS size_sp (
+                        MaSP VARCHAR(30) NOT NULL,
+                        Size VARCHAR(20) NOT NULL,
+                        PRIMARY KEY (MaSP, Size),
+                        FOREIGN KEY (MaSP) REFERENCES sanpham(MaSP) ON DELETE CASCADE
+                    )
+                """)
+
                 # Update product with import date
                 cursor.execute("""
                     UPDATE sanpham 
@@ -1726,6 +1794,16 @@ class ProductView:
                     for color in color_list:
                         cursor.execute("INSERT INTO mausac_sp (MaSP, MauSac) VALUES (%s, %s)", (product_id, color))
 
+                # Delete old sizes
+                cursor.execute("DELETE FROM size_sp WHERE MaSP = %s", (product_id,))
+
+                # Insert new sizes if provided
+                sizes_edit = text_sizes_edit.get(1.0, tk.END).strip()
+                if sizes_edit:
+                    size_list = [size.strip() for size in sizes_edit.split('\n') if size.strip()]
+                    for size in size_list:
+                        cursor.execute("INSERT INTO size_sp (MaSP, Size) VALUES (%s, %s)", (product_id, size))
+
                 # Delete old images
                 cursor.execute("DELETE FROM url_sp WHERE MaSP = %s", (product_id,))
 
@@ -1742,7 +1820,8 @@ class ProductView:
                 conn.commit()
                 total_images = len([url.strip() for url in image_urls.split('\n') if url.strip()]) + len(uploaded_images)
                 total_colors = len([color.strip() for color in colors.split('\n') if color.strip()])
-                messagebox.showinfo("Thành công", f"Đã cập nhật sản phẩm '{name}' với {total_colors} màu và {total_images} ảnh thành công!")
+                total_sizes = len([size.strip() for size in sizes_edit.split('\n') if size.strip()])
+                messagebox.showinfo("Thành công", f"Đã cập nhật sản phẩm '{name}' với {total_colors} màu, {total_sizes} size và {total_images} ảnh thành công!")
                 edit_window.destroy()
 
                 # Refresh the product list
