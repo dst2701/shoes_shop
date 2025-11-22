@@ -70,7 +70,7 @@ class CartView:
             ma_kh = result[0]
 
             # Lấy MaGH từ MaKH
-            cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+            cursor.execute("SELECT MaDH FROM donhang WHERE MaKH = %s", (ma_kh,))
             gh_result = cursor.fetchone()
 
             if not gh_result:
@@ -85,9 +85,9 @@ class CartView:
             cursor.execute("""
                 SELECT ghsp.MaSP, sp.TenSP, sp.Gia, ghsp.MauSac, ghsp.Size, ghsp.SoLuong,
                        sp.GiamGia
-                FROM giohangchuasanpham ghsp
+                FROM sptrongdon ghsp
                 JOIN sanpham sp ON ghsp.MaSP = sp.MaSP
-                WHERE ghsp.MaGH = %s
+                WHERE ghsp.MaDH = %s
                 ORDER BY sp.TenSP
             """, (ma_gh,))
 
@@ -240,14 +240,14 @@ class CartView:
                 result = cursor.fetchone()
                 ma_kh = result[0]
 
-                cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+                cursor.execute("SELECT MaDH FROM donhang WHERE MaKH = %s", (ma_kh,))
                 result = cursor.fetchone()
                 ma_gh = result[0]
 
                 # Xóa sản phẩm khỏi giỏ hàng
                 cursor.execute("""
-                    DELETE FROM giohangchuasanpham 
-                    WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
+                    DELETE FROM sptrongdon 
+                    WHERE MaDH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
                 """, (ma_gh, product_id, color, size))
 
                 conn.commit()
@@ -375,7 +375,7 @@ class CartView:
 
             ma_kh = result[0]
 
-            cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+            cursor.execute("SELECT MaDH FROM donhang WHERE MaKH = %s", (ma_kh,))
             result = cursor.fetchone()
             if not result:
                 return
@@ -384,7 +384,7 @@ class CartView:
 
             # FIXED: Simply delete cart items without affecting product inventory
             # Cart items are just "reserved" - they don't affect actual inventory until payment
-            cursor.execute("DELETE FROM giohangchuasanpham WHERE MaGH = %s", (ma_gh,))
+            cursor.execute("DELETE FROM sptrongdon WHERE MaDH = %s", (ma_gh,))
 
             conn.commit()
 

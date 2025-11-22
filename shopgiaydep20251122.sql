@@ -1,6 +1,6 @@
 -- MySQL dump 10.13  Distrib 8.0.43, for Win64 (x86_64)
 --
--- Host: 127.0.0.1    Database: shopgiaydep09102025
+-- Host: 127.0.0.1    Database: shopgiaydep22112025
 -- ------------------------------------------------------
 -- Server version	8.0.43
 
@@ -51,60 +51,30 @@ INSERT INTO `cthoadon` VALUES ('HD001','SP001','Nike Metcon 9 By You','Đen','41
 UNLOCK TABLES;
 
 --
--- Table structure for table `giohang`
+-- Table structure for table `donhang`
 --
 
-DROP TABLE IF EXISTS `giohang`;
+DROP TABLE IF EXISTS `donhang`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `giohang` (
-  `MaGH` varchar(30) NOT NULL,
+CREATE TABLE `donhang` (
+  `MaDH` varchar(30) NOT NULL,
   `MaKH` varchar(30) NOT NULL,
-  PRIMARY KEY (`MaGH`),
+  `NgayLap` datetime DEFAULT NULL,
+  PRIMARY KEY (`MaDH`),
   UNIQUE KEY `MaKH` (`MaKH`),
-  CONSTRAINT `giohang_ibfk_1` FOREIGN KEY (`MaKH`) REFERENCES `khachhang` (`MaKH`)
+  CONSTRAINT `donhang_ibfk_1` FOREIGN KEY (`MaKH`) REFERENCES `khachhang` (`MaKH`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Dumping data for table `giohang`
+-- Dumping data for table `donhang`
 --
 
-LOCK TABLES `giohang` WRITE;
-/*!40000 ALTER TABLE `giohang` DISABLE KEYS */;
-INSERT INTO `giohang` VALUES ('GH001','KH001'),('GH002','KH002'),('GH003','KH003'),('GH004','KH004'),('GH005','KH005'),('GH006','KH006'),('GH007','KH007'),('GH008','KH008'),('GH009','KH009'),('GH010','KH010'),('GH015','KH011'),('GH013','KH013'),('GH014','KH014');
-/*!40000 ALTER TABLE `giohang` ENABLE KEYS */;
-UNLOCK TABLES;
-
---
--- Table structure for table `giohangchuasanpham`
---
-
-DROP TABLE IF EXISTS `giohangchuasanpham`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `giohangchuasanpham` (
-  `MaGH` varchar(30) NOT NULL,
-  `MaSP` varchar(30) NOT NULL,
-  `MauSac` varchar(100) NOT NULL,
-  `Size` varchar(20) NOT NULL,
-  `SoLuong` int NOT NULL,
-  PRIMARY KEY (`MaGH`,`MaSP`,`MauSac`,`Size`),
-  KEY `MaSP` (`MaSP`),
-  CONSTRAINT `giohangchuasanpham_ibfk_1` FOREIGN KEY (`MaGH`) REFERENCES `giohang` (`MaGH`),
-  CONSTRAINT `giohangchuasanpham_ibfk_2` FOREIGN KEY (`MaSP`) REFERENCES `sanpham` (`MaSP`),
-  CONSTRAINT `giohangchuasanpham_chk_1` CHECK ((`SoLuong` > 0))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `giohangchuasanpham`
---
-
-LOCK TABLES `giohangchuasanpham` WRITE;
-/*!40000 ALTER TABLE `giohangchuasanpham` DISABLE KEYS */;
-INSERT INTO `giohangchuasanpham` VALUES ('GH014','SP001','Đen','36',1),('GH014','SP001','Đen','37',1),('GH014','SP002','Đen','39',1),('GH014','SP002','Đen','41',2),('GH014','SP002','Đen','43',1),('GH014','SP002','Đen','44',1),('GH014','SP002','Đen','45',1),('GH014','SP003','Đen','39',1),('GH014','SP003','Xanh Dương','45',1),('GH014','SP004','Đen','42',1);
-/*!40000 ALTER TABLE `giohangchuasanpham` ENABLE KEYS */;
+LOCK TABLES `donhang` WRITE;
+/*!40000 ALTER TABLE `donhang` DISABLE KEYS */;
+INSERT INTO `donhang` VALUES ('GH001','KH001',NULL),('GH002','KH002',NULL),('GH003','KH003',NULL),('GH004','KH004',NULL),('GH005','KH005',NULL),('GH006','KH006',NULL),('GH007','KH007',NULL),('GH008','KH008',NULL),('GH009','KH009',NULL),('GH010','KH010',NULL),('GH013','KH013',NULL),('GH014','KH014',NULL),('GH015','KH011',NULL);
+/*!40000 ALTER TABLE `donhang` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -257,6 +227,37 @@ INSERT INTO `sanpham` VALUES ('SP001','Nike Metcon 9 By You',4999000.00,'Đôi g
 UNLOCK TABLES;
 
 --
+-- Table structure for table `sptrongdon`
+--
+
+DROP TABLE IF EXISTS `sptrongdon`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `sptrongdon` (
+  `MaDH` varchar(30) NOT NULL,
+  `MaSP` varchar(30) NOT NULL,
+  `MauSac` varchar(100) NOT NULL,
+  `Size` varchar(20) NOT NULL,
+  `SoLuong` int NOT NULL,
+  PRIMARY KEY (`MaDH`,`MaSP`,`MauSac`,`Size`),
+  KEY `MaSP` (`MaSP`),
+  CONSTRAINT `sptrongdon_ibfk_1` FOREIGN KEY (`MaDH`) REFERENCES `donhang` (`MaDH`),
+  CONSTRAINT `sptrongdon_ibfk_2` FOREIGN KEY (`MaSP`) REFERENCES `sanpham` (`MaSP`),
+  CONSTRAINT `sptrongdon_chk_1` CHECK ((`SoLuong` > 0))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `sptrongdon`
+--
+
+LOCK TABLES `sptrongdon` WRITE;
+/*!40000 ALTER TABLE `sptrongdon` DISABLE KEYS */;
+INSERT INTO `sptrongdon` VALUES ('GH014','SP001','Đen','36',1),('GH014','SP001','Đen','37',1),('GH014','SP002','Đen','39',1),('GH014','SP002','Đen','41',2),('GH014','SP002','Đen','43',1),('GH014','SP002','Đen','44',1),('GH014','SP002','Đen','45',1),('GH014','SP003','Đen','39',1),('GH014','SP003','Xanh Dương','45',1),('GH014','SP004','Đen','42',1);
+/*!40000 ALTER TABLE `sptrongdon` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `thuonghieu`
 --
 
@@ -315,4 +316,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-10-30 21:27:09
+-- Dump completed on 2025-11-22 17:48:24

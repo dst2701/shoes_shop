@@ -13,5 +13,6 @@ def get_db_connection():
         host="127.0.0.1",
         user="root",
         password="tungds270105",
-        database="shopgiaydep09102025"
+        database="shopgiaydep22112025"
+        # Bản cũ là shopgiaydep09102025
     )

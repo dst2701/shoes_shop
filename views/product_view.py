@@ -35,7 +35,7 @@ class ProductView:
             ma_kh = result[0]
 
             # Get MaGH from MaKH
-            cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+            cursor.execute("SELECT MaDH FROM donhang WHERE MaKH = %s", (ma_kh,))
             gh_result = cursor.fetchone()
             if not gh_result:
                 return
@@ -44,8 +44,8 @@ class ProductView:
 
             # Get all products in cart from database
             cursor.execute("""
-                SELECT MaSP, SoLuong FROM giohangchuasanpham 
-                WHERE MaGH = %s
+                SELECT MaSP, SoLuong FROM sptrongdon 
+                WHERE MaDH = %s
             """, (ma_gh,))
 
             cart_items = cursor.fetchall()
@@ -133,15 +133,15 @@ class ProductView:
                     ma_kh = result[0]
 
                     # Get MaGH from MaKH
-                    cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+                    cursor.execute("SELECT MaDH FROM donhang WHERE MaKH = %s", (ma_kh,))
                     gh_result = cursor.fetchone()
                     if not gh_result:
                         return "🛒 Giỏ hàng (0)"
 
                     ma_gh = gh_result[0]
 
-                    # Calculate total quantity from giohangchuasanpham
-                    cursor.execute("SELECT SUM(SoLuong) FROM giohangchuasanpham WHERE MaGH = %s", (ma_gh,))
+                    # Calculate total quantity from sptrongdon
+                    cursor.execute("SELECT SUM(SoLuong) FROM sptrongdon WHERE MaDH = %s", (ma_gh,))
                     count_result = cursor.fetchone()
                     cart_count = count_result[0] if count_result and count_result[0] else 0
 
@@ -734,17 +734,17 @@ class ProductView:
                 ma_kh = result[0]
 
                 # Check and create cart if not exists
-                cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+                cursor.execute("SELECT MaDH FROM donhang WHERE MaKH = %s", (ma_kh,))
                 gh_result = cursor.fetchone()
 
                 if not gh_result:
                     # Create new cart ID
-                    cursor.execute("SELECT MAX(CAST(SUBSTRING(MaGH, 3) AS UNSIGNED)) FROM giohang")
+                    cursor.execute("SELECT MAX(CAST(SUBSTRING(MaDH, 3) AS UNSIGNED)) FROM donhang")
                     max_result = cursor.fetchone()
                     next_id = (max_result[0] + 1) if max_result[0] else 1
                     ma_gh = f"GH{next_id:03d}"
 
-                    cursor.execute("INSERT INTO giohang (MaGH, MaKH) VALUES (%s, %s)", (ma_gh, ma_kh))
+                    cursor.execute("INSERT INTO donhang (MaDH, MaKH) VALUES (%s, %s)", (ma_gh, ma_kh))
                 else:
                     ma_gh = gh_result[0]
 
@@ -757,7 +757,7 @@ class ProductView:
                 # 2. Calculate total quantity of this product already in ALL carts (all users, all colors/sizes)
                 cursor.execute("""
                     SELECT SUM(ghsp.SoLuong) 
-                    FROM giohangchuasanpham ghsp
+                    FROM sptrongdon ghsp
                     WHERE ghsp.MaSP = %s
                 """, (ma_sp,))
                 total_in_carts_result = cursor.fetchone()
@@ -765,8 +765,8 @@ class ProductView:
 
                 # 3. Check if current user already has this specific color/size combination
                 cursor.execute("""
-                    SELECT SoLuong FROM giohangchuasanpham 
-                    WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
+                    SELECT SoLuong FROM sptrongdon 
+                    WHERE MaDH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
                 """, (ma_gh, ma_sp, selected_color, selected_size))
                 existing = cursor.fetchone()
                 current_user_has = existing[0] if existing else 0
@@ -805,9 +805,9 @@ class ProductView:
                 if existing:
                     # Update existing cart item
                     cursor.execute("""
-                        UPDATE giohangchuasanpham 
+                        UPDATE sptrongdon 
                         SET SoLuong = %s 
-                        WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
+                        WHERE MaDH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
                     """, (new_user_total, ma_gh, ma_sp, selected_color, selected_size))
 
                     success_message = (f"Đã cập nhật giỏ hàng!\n"
@@ -817,7 +817,7 @@ class ProductView:
                 else:
                     # Add new cart item
                     cursor.execute("""
-                        INSERT INTO giohangchuasanpham (MaGH, MaSP, MauSac, Size, SoLuong)
+                        INSERT INTO sptrongdon (MaDH, MaSP, MauSac, Size, SoLuong)
                         VALUES (%s, %s, %s, %s, %s)
                     """, (ma_gh, ma_sp, selected_color, selected_size, quantity))
 
@@ -868,8 +868,8 @@ class ProductView:
 
                 # Delete all related records in correct order to avoid foreign key constraint errors
 
-                # 1. Delete from giohangchuasanpham (cart items) - products in customers' carts
-                cursor.execute("DELETE FROM giohangchuasanpham WHERE MaSP = %s", (ma_sp,))
+                # 1. Delete from sptrongdon (cart items) - products in customers' carts
+                cursor.execute("DELETE FROM sptrongdon WHERE MaSP = %s", (ma_sp,))
 
                 # 2. Delete product images
                 cursor.execute("DELETE FROM url_sp WHERE MaSP = %s", (ma_sp,))

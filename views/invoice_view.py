@@ -61,7 +61,7 @@ class InvoiceView:
         header_container.pack(fill='both', expand=True, padx=10)
 
         # Add invoice ID to header
-        header_title = f"📄 HÓA ĐƠN CHI TIẾT"
+        header_title = f"📄 ĐƠN HÀNG CHI TIẾT"
         if invoice_id:
             header_title += f" - {invoice_id}"
 
@@ -111,7 +111,7 @@ class InvoiceView:
 
         # Display invoice ID if available
         if invoice_id:
-            tk.Label(left_info, text=f"Mã hóa đơn: {invoice_id}",
+            tk.Label(left_info, text=f"Mã đơn hàng: {invoice_id}",
                      font=('Arial', 12, 'bold'), bg='white', fg='#2c3e50').pack(anchor='w')
 
         tk.Label(left_info, text=f"Ngày lập: {current_time.strftime('%d/%m/%Y %H:%M')}",
@@ -334,8 +334,8 @@ class InvoiceView:
             )
 
             # Use cart_products passed from cart_view (already selected items only)
-            # Get MaGH for deleting processed items from cart
-            cursor.execute("SELECT MaGH FROM giohang WHERE MaKH = %s", (ma_kh,))
+            # Get MaDH for deleting processed items from cart
+            cursor.execute("SELECT MaDH FROM donhang WHERE MaKH = %s", (ma_kh,))
             gh_result = cursor.fetchone()
             if gh_result:
                 ma_gh = gh_result[0]
@@ -406,8 +406,8 @@ class InvoiceView:
                 # Clear ONLY the selected items from cart after payment
                 for item in grouped_items.values():
                     cursor.execute("""
-                        DELETE FROM giohangchuasanpham 
-                        WHERE MaGH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
+                        DELETE FROM sptrongdon 
+                        WHERE MaDH = %s AND MaSP = %s AND MauSac = %s AND Size = %s
                     """, (ma_gh, item['ma_sp'], item['color'], item['size']))
 
             conn.commit()
