@@ -471,20 +471,92 @@ class CartView:
                 return
             ma_kh = result[0]
 
-            # 2. Generate new MaDH (GHxxx)
+            # 2. KIỂM TRA SỐ LƯỢNG KHẢ DỤNG - Logic mới
+            # Tính toán số lượng khả dụng sau khi trừ đi các đơn chờ thanh toán
+            insufficient_products = []
+
+            # Group selected products by MaSP (vì tồn kho không phân biệt màu/size)
+            products_by_masp = {}
+            for cart_key, item in selected_products.items():
+                ma_sp = item['product_id']
+                if ma_sp not in products_by_masp:
+                    products_by_masp[ma_sp] = {
+                        'name': item['name'],
+                        'requested_quantity': 0,
+                        'items': []
+                    }
+                products_by_masp[ma_sp]['requested_quantity'] += item['quantity']
+                products_by_masp[ma_sp]['items'].append(item)
+
+            # Check each product
+            for ma_sp, product_info in products_by_masp.items():
+                # Get stock quantity
+                cursor.execute("SELECT SoLuong, TenSP FROM sanpham WHERE MaSP = %s", (ma_sp,))
+                stock_result = cursor.fetchone()
+                if not stock_result:
+                    messagebox.showerror("Lỗi", f"Không tìm thấy sản phẩm {ma_sp}!")
+                    return
+
+                stock_quantity = stock_result[0]
+                product_name = stock_result[1]
+
+                # Get total quantity in pending orders (sptrongdon)
+                cursor.execute("""
+                    SELECT COALESCE(SUM(SoLuong), 0) 
+                    FROM sptrongdon 
+                    WHERE MaSP = %s
+                """, (ma_sp,))
+                pending_result = cursor.fetchone()
+                total_in_pending = pending_result[0] if pending_result else 0
+
+                # Calculate available quantity
+                available_quantity = stock_quantity - total_in_pending
+                requested_quantity = product_info['requested_quantity']
+
+                # Check if insufficient
+                if requested_quantity > available_quantity:
+                    insufficient_products.append({
+                        'ma_sp': ma_sp,
+                        'name': product_name,
+                        'requested': requested_quantity,
+                        'available': available_quantity,
+                        'stock': stock_quantity,
+                        'pending': total_in_pending
+                    })
+
+            # If any product is insufficient, show error and abort
+            if insufficient_products:
+                error_msg = "⚠️ KHÔNG THỂ TẠO ĐƠN HÀNG!\n\n"
+                error_msg += "Một số sản phẩm không đủ số lượng:\n\n"
+
+                for i, prod in enumerate(insufficient_products, 1):
+                    error_msg += f"{i}. {prod['name']} (Mã: {prod['ma_sp']})\n"
+                    error_msg += f"   • Bạn muốn: {prod['requested']} sản phẩm\n"
+                    error_msg += f"   • Số lượng khả dụng: {prod['available']} sản phẩm\n"
+                    error_msg += f"   • Tồn kho: {prod['stock']} | Đang trong đơn chờ: {prod['pending']}\n\n"
+
+                error_msg += "Vui lòng:\n"
+                error_msg += "• Giảm số lượng sản phẩm trong giỏ hàng\n"
+                error_msg += "• Hoặc xóa sản phẩm không đủ hàng\n"
+                error_msg += "• Sau đó thử tạo đơn lại"
+
+                messagebox.showerror("Không đủ hàng", error_msg)
+                return
+
+            # 3. Generate new MaDH (GHxxx)
             cursor.execute("SELECT MAX(CAST(SUBSTRING(MaDH, 3) AS UNSIGNED)) FROM donhang")
             max_result = cursor.fetchone()
             max_id = max_result[0] if max_result[0] else 0
             ma_dh = f"GH{max_id + 1:03d}"
 
-            # 3. Insert into donhang with current datetime
+            # 4. Insert into donhang with current datetime
             ngay_lap = datetime.now()
             cursor.execute("""
                 INSERT INTO donhang (MaDH, MaKH, NgayLap)
                 VALUES (%s, %s, %s)
             """, (ma_dh, ma_kh, ngay_lap))
 
-            # 4. Insert selected products into sptrongdon
+            # 5. Insert selected products into sptrongdon
             for cart_key, item in selected_products.items():
                 cursor.execute("""
                     INSERT INTO sptrongdon (MaDH, MaSP, MauSac, Size, SoLuong)
@@ -493,7 +565,7 @@ class CartView:
 
             conn.commit()
 
-            # 5. Remove selected items from giohangchuasanpham database
+            # 6. Remove selected items from giohangchuasanpham database
             for cart_key, item in selected_products.items():
                 cursor.execute("""
                     DELETE FROM giohangchuasanpham 
@@ -503,16 +575,18 @@ class CartView:
             conn.commit()
 
             messagebox.showinfo("Thành công",
-                              f"Đã tạo đơn hàng {ma_dh}!\n"
-                              f"Thời gian: {ngay_lap.strftime('%d/%m/%Y %H:%M')}\n"
-                              f"Số sản phẩm: {len(selected_products)}\n\n"
-                              f"Bạn có thể xem và thanh toán đơn này tại 'Chưa thanh toán'")
+                              f"✅ Đã tạo đơn hàng {ma_dh}!\n\n"
+                              f"📅 Thời gian: {ngay_lap.strftime('%d/%m/%Y %H:%M')}\n"
+                              f"📦 Số sản phẩm: {len(selected_products)}\n\n"
+                              f"💡 Bạn có thể xem và thanh toán đơn này tại 'Chưa thanh toán'")
 
             # Refresh cart view
             self.show_cart(username, role, on_back_callback)
 
         except Exception as e:
             messagebox.showerror("Lỗi", f"Không thể tạo đơn hàng: {str(e)}")
+            import traceback
+            traceback.print_exc()
         finally:
             if cursor:
                 cursor.close()
