@@ -1409,11 +1409,9 @@ class ProductView:
                     )
                 """)
 
-                # Generate new product ID
-                cursor.execute("SELECT MAX(CAST(SUBSTRING(MaSP, 3) AS UNSIGNED)) FROM sanpham WHERE MaSP LIKE 'SP%'")
-                result = cursor.fetchone()
-                next_number = ((result[0] or 0) + 1) if result and result[0] is not None else 1
-                product_id = f"SP{next_number:03d}"
+                # Generate new product ID - sử dụng hàm từ models/product.py
+                from models.product import generate_product_id
+                product_id = generate_product_id(cursor)
 
                 # Insert product with import date
                 cursor.execute("""
