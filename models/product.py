@@ -4,12 +4,23 @@ Model xử lý dữ liệu sản phẩm
 from config.database import get_db_connection
 
 def generate_product_id(cursor):
-    """Tạo mã sản phẩm tự động"""
+    """Tạo mã sản phẩm tự động - kiểm tra cả bảng sanpham và cthoadon để tránh trùng lặp"""
+    # Lấy mã lớn nhất từ bảng sanpham
     cursor.execute(
         "SELECT MAX(CAST(SUBSTRING(MaSP, 3) AS UNSIGNED)) FROM sanpham WHERE MaSP LIKE 'SP%'"
     )
-    result = cursor.fetchone()
-    next_number = ((result[0] or 0) + 1) if result and result[0] is not None else 1
+    result_sanpham = cursor.fetchone()
+    max_sanpham = (result_sanpham[0] or 0) if result_sanpham and result_sanpham[0] is not None else 0
+
+    # Lấy mã lớn nhất từ bảng cthoadon (để tránh tái sử dụng mã đã bị xoá)
+    cursor.execute(
+        "SELECT MAX(CAST(SUBSTRING(MaSP, 3) AS UNSIGNED)) FROM cthoadon WHERE MaSP LIKE 'SP%'"
+    )
+    result_cthoadon = cursor.fetchone()
+    max_cthoadon = (result_cthoadon[0] or 0) if result_cthoadon and result_cthoadon[0] is not None else 0
+
+    # Lấy số lớn nhất trong cả 2 bảng và tăng thêm 1
+    next_number = max(max_sanpham, max_cthoadon) + 1
     return f"SP{next_number:03d}"
 
 def generate_brand_id(cursor):
